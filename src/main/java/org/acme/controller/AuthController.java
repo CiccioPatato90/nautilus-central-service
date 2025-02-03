@@ -1,11 +1,10 @@
 package org.acme.controller;
 
-import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-import org.acme.model.Tab;
+import org.acme.model.settings.Tab;
 import org.acme.service.UtenteService;
 import org.acme.service.auth.AuthService;
 

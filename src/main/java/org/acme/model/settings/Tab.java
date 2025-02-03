@@ -1,4 +1,4 @@
-package org.acme.model;
+package org.acme.model.settings;
 
 import io.smallrye.common.constraint.NotNull;
 import jakarta.persistence.*;
@@ -34,6 +34,10 @@ public class Tab {
 
     @Column(name = "order")
     private int order;
+
+    @NotNull
+    @Column(name = "tab_type", nullable = false, length = 128)
+    private String tabType;
 
     @ManyToMany
     @JoinTable(name = "roles_tabs",

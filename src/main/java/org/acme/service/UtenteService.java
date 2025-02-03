@@ -3,7 +3,7 @@ package org.acme.service;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.acme.model.Tab;
+import org.acme.model.settings.Tab;
 import org.acme.model.Utente;
 import org.acme.repository.TabRepository;
 import org.acme.repository.UtenteRepository;

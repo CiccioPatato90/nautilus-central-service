@@ -1,39 +1,27 @@
-package org.acme.controller;
+package org.acme.controller.settings;
 
-import io.quarkus.security.Authenticated;
-import io.quarkus.security.identity.SecurityIdentity;
-import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.acme.dto.AssociationDTO;
 import org.acme.model.Association;
-import org.acme.model.response.AssociationResponse;
 import org.acme.repository.AssociationService;
 import org.acme.service.UtenteService;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 
-
 import java.util.List;
 
-@Path("/api/associations")
-public class AssociationController {
-
+@Path("/api/settings/assoc-mgmt")
+public class AssociationMgmtController {
     @Inject
     AssociationService associationService;
-
-    @Inject
-    UtenteService utenteService;
 
     @GET
     @Path("/list")
     @Produces(MediaType.APPLICATION_JSON)
     @RolesAllowed("user")
     public List<Association> list() {
-        System.out.println("Processing request by: " + utenteService.getCurrentUtenteName());
-        System.out.println("With Roles: " + utenteService.getCurrentUtenteRoles());
         List<Association> list = (List<Association>) associationService.listAll();
         return list;
     }

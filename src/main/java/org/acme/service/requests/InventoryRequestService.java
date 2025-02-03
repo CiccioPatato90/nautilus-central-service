@@ -1,48 +1,41 @@
-package org.acme.service;
+package org.acme.service.requests;
 
 import io.quarkus.mongodb.panache.PanacheMongoRepository;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.acme.dto.requests.RequestFilter;
-import org.acme.model.requests.JoinRequest;
+import org.acme.model.requests.BaseRequest;
+import org.acme.model.requests.InventoryRequest;
+import org.acme.model.response.RequestListResponse;
+import org.acme.repository.requests.InventoryRequestDAO;
 import org.bson.Document;
 import org.bson.conversions.Bson;
-import java.util.Map;
-import java.util.HashMap;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static io.netty.util.internal.StringUtil.isNullOrEmpty;
+import static org.acme.model.enums.RequestType.VIEW_ALL_LIST;
 
 @ApplicationScoped
-public class JoinRequestService implements PanacheMongoRepository<JoinRequest> {
+public class InventoryRequestService implements RequestInterface{
+    @Inject
+    InventoryRequestDAO inventoryRequestDAO;
 
-    public String add(JoinRequest req) {
-//        JoinRequestMapper mapper = Mappers.getMapper(JoinRequestMapper.class);
-//        var entity = mapper.dtoToEntity(req);
-//        persist(entity);
-//        return entity.getRequestId().toString();
-//        ObjectId id = ObjectId.get();
-//        req.setRequestId(id);
-        persist(req);
-        return "YES";
-    }
-
-
-    public List<JoinRequest> getReq(RequestFilter filter) {
-        if (filter == null || filter.isEmpty()) {
-            return findAll().list();
+    @Override
+    public List<? extends BaseRequest> getList(RequestFilter filter) {
+        if (filter == null || filter.isEmpty() || filter.getRequestType().equals(VIEW_ALL_LIST)) {
+            var list = inventoryRequestDAO.findAll().list();
+            return list;
+//            return mapToResponse(list, filter);
         }
 
         // Build the query dynamically using a Map
         Map<String, Object> queryMap = new HashMap<>();
 
-        addFilter(queryMap, "associationName", filter.getAssociationName(), true); // Regex filter
-        addFilter(queryMap, "category", filter.getCategory(), false);
-        addFilter(queryMap, "urgency", filter.getUrgency(), false);
+        addFilter(queryMap, "associationId", filter.getAssociationId(), true);
         addFilter(queryMap, "status", filter.getStatus(), false);
-        addFilter(queryMap, "assignedAdmin", filter.getAssignedAdmin(), false);
-        addFilter(queryMap, "location", filter.getLocation(), false);
 
         // Tags filter (Array field)
         if (filter.getTags() != null && !filter.getTags().isEmpty()) {
@@ -55,11 +48,15 @@ public class JoinRequestService implements PanacheMongoRepository<JoinRequest> {
         }
 
         Bson bsonQuery = new Document(queryMap);
-        
-        var filteredList = find(bsonQuery).list();
-        return filteredList;
+
+        var filteredList = inventoryRequestDAO.find(bsonQuery).list();
+        return inventoryRequestDAO.find(bsonQuery).list();
     }
 
+    @Override
+    public RequestListResponse add(Class<? extends BaseRequest> filter) {
+        return null;
+    }
 
     private void addFilter(Map<String, Object> queryMap, String field, String value, boolean useRegex) {
         if (!isNullOrEmpty(value)) {

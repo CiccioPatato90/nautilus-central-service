@@ -1,4 +1,4 @@
-package org.acme.model;
+package org.acme.model.settings;
 
 import io.smallrye.common.constraint.NotNull;
 import jakarta.persistence.*;
