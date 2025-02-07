@@ -2,6 +2,7 @@ package org.acme.dto.requests;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.acme.model.enums.RequestStatus;
 import org.acme.model.enums.RequestType;
 
 import java.util.List;
@@ -9,25 +10,21 @@ import java.util.List;
 @Getter
 @Setter
 public class RequestFilter {
+    private RequestType requestType;
     private String associationName;
     private String associationId;
-    private RequestType requestType;
-    private String urgency;
-    private String status;
-    private String assignedAdmin;
+//    MAPPED TO true/false
+    private String associationConfirmed;
+    private RequestStatus status;
     private String location;
-    private List<String> tags;
     private String dateFrom;
     private String dateTo;
 
     public boolean isEmpty() {
         return isNullOrEmpty(associationName) &&
                 isNullOrEmpty(requestType.toString()) &&
-                isNullOrEmpty(urgency) &&
-                isNullOrEmpty(status) &&
-                isNullOrEmpty(assignedAdmin) &&
+                isNullOrEmpty(status.toString()) &&
                 isNullOrEmpty(location) &&
-                (tags == null || tags.isEmpty()) &&
                 isNullOrEmpty(dateFrom) &&
                 isNullOrEmpty(dateTo);
     }

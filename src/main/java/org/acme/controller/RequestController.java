@@ -4,8 +4,11 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.acme.dto.requests.RequestFilter;
+import org.acme.model.requests.BaseRequest;
 import org.acme.model.requests.JoinRequest;
+import org.acme.model.requests.RequestCommand;
 import org.acme.model.response.RequestListResponse;
 import org.acme.service.requests.RequestService;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
@@ -13,23 +16,8 @@ import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 @Path("/api/requests")
 public class RequestController {
 
-//    @RestClient
-//    RequestService service;
-
-//    @Inject
-//    OrgRequestService orgRequestService;
-//    @Inject
-//    InventoryRequestService inventoryRequestService;
-
     @Inject
     RequestService requestService;
-
-//    @GET
-//    @Produces(MediaType.APPLICATION_JSON)
-//    @RolesAllowed("user")
-//    public RequestListResponse commonData(@RequestBody JoinRequest joinRequest) {
-//        return null;
-//    }
 
     @POST
     @Path("list")
@@ -51,6 +39,32 @@ public class RequestController {
 //        var reqId = orgRequestService.addRequest(joinRequest);
         return " FAKE ";
     }
+
+
+    @POST
+    @Path("get/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    @RolesAllowed("user")
+    public BaseRequest getRequest(@PathParam("id") String id) {
+        var req = requestService.getByRequestId(id);
+        return req;
+    }
+
+
+    @POST
+    @Path("approve")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    @RolesAllowed("user")
+    public Response approveRequest(@RequestBody RequestCommand command) {
+        var req = requestService.approveRequest(command);
+        return Response.ok(req).build();
+    }
+
+
+
+
 //
 //
 //    @POST

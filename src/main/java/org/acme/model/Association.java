@@ -4,6 +4,10 @@ import io.smallrye.common.constraint.NotNull;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.acme.model.virtual_warehouse.InventoryBox;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -36,17 +40,17 @@ public class Association {
     private String phone;
 
 
-    @NotNull
-    @Column(name = "website", nullable = false, length = 256)
+    @Column(name = "website", length = 256)
     private String website;
 
 
-    @NotNull
-    @Column(name = "remarks", nullable = false, length = 1024)
+    @Column(name = "remarks", length = 1024)
     private String remarks;
 
-    @NotNull
-    @Column(name = "img64", nullable = false)
+    @Column(name = "img64")
     private byte[] img64;
+
+    @OneToMany(mappedBy = "fkAssociation")
+    private Set<InventoryBox> inventoryBoxes = new LinkedHashSet<>();
 
 }

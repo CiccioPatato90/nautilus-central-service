@@ -30,20 +30,23 @@
     </dependencyManagement>
 
     <dependencies>
+<!--            QUARKUS BASE DEPENDENCIES   -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
         </dependency>
-
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit5</artifactId>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-openapi</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-client-jackson</artifactId>
         </dependency>
 
 <!--        DB (MYSQL + MONGODB)-->
@@ -55,18 +58,19 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-mongodb-panache</artifactId>
         </dependency>
+
 <!--        Map struct, DTO Mapping-->
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct</artifactId>
-            <version>1.5.3.Final</version>
-        </dependency>
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct-processor</artifactId>
-            <version>1.5.3.Final</version>
-            <scope>provided</scope>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.mapstruct</groupId>-->
+<!--            <artifactId>mapstruct</artifactId>-->
+<!--            <version>1.5.3.Final</version>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.mapstruct</groupId>-->
+<!--            <artifactId>mapstruct-processor</artifactId>-->
+<!--            <version>1.5.3.Final</version>-->
+<!--            <scope>provided</scope>-->
+<!--        </dependency>-->
 
         <dependency>
             <groupId>io.quarkiverse.jpastreamer</groupId>
@@ -84,12 +88,6 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
-
-<!--        <dependency>-->
-<!--            <groupId>io.quarkus</groupId>-->
-<!--            <artifactId>quarkus-resteasy-reactive-jackson</artifactId>-->
-<!--            <version>3.11.0</version>-->
-<!--        </dependency>-->
 
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -114,22 +112,11 @@
         </dependency>
 
 
-        <!--    CAMEL DEPENDENCIES  -->
+        <!--        GRPC    -->
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-rest-client-jackson</artifactId>
+            <artifactId>quarkus-grpc</artifactId>
         </dependency>
-
-<!--        <dependency>-->
-<!--            <groupId>org.apache.camel.quarkus</groupId>-->
-<!--            <artifactId>camel-quarkus</artifactId>-->
-<!--            <version>3.9.0</version>-->
-<!--        </dependency>-->
-
-<!--        <dependency>-->
-<!--            <groupId>io.quarkus</groupId>-->
-<!--            <artifactId>quarkus-rest-client</artifactId>-->
-<!--        </dependency>-->
 
     </dependencies>
 

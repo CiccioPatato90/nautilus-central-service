@@ -9,7 +9,7 @@ import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
 
 @ApplicationScoped
-public class AssociationService  implements PanacheRepository<Association> {
+public class AssociationDAO implements PanacheRepository<Association> {
 
     @Channel("upload-requests")
     Emitter<String> uploadRequestEmitter;
@@ -24,6 +24,10 @@ public class AssociationService  implements PanacheRepository<Association> {
             e.printStackTrace();
             throw new RuntimeException("Failed to process the request: ", e);
         }
+    }
+
+    public Association findByName(String name) {
+        return find("name", name).firstResult();
     }
 
     @Transactional
@@ -57,6 +61,10 @@ public class AssociationService  implements PanacheRepository<Association> {
         json.put("id", id);
 
         uploadRequestEmitter.send(json.encode());
+    }
+
+    public Association findById(Long id) {
+        return find("id", id).firstResult();
     }
 
     @Transactional

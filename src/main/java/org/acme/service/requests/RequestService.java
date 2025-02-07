@@ -5,23 +5,17 @@ import jakarta.inject.Inject;
 import org.acme.dto.requests.RequestFilter;
 import org.acme.model.enums.RequestType;
 import org.acme.model.requests.BaseRequest;
-import org.acme.model.requests.JoinRequest;
+import org.acme.model.requests.RequestCommand;
 import org.acme.model.response.RequestListResponse;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import static org.acme.model.enums.RequestType.INVENTORY_REQUEST;
-import static org.acme.model.enums.RequestType.ORGANIZATION_JOIN_REQUEST;
 
 @ApplicationScoped
-public class RequestService implements RequestInterface {
+public class RequestService {
 
     @Inject
     OrgRequestService orgRequestService;
@@ -46,15 +40,17 @@ public class RequestService implements RequestInterface {
         return response;
     }
 
-//    private RequestListResponse mapToResponse(List<JoinRequest> req, RequestFilter filters) {
-//        var res = new RequestListResponse();
-//        res.setJoinRequests(req);
-//        res.setFilters(filters);
-//        return res;
-//    }
+    public BaseRequest getByRequestId(String id) {
+        if(id.startsWith("IR")){
+            return inventoryRequestService.findByRequestId(id);
+        }else if(id.startsWith("JR")){
+            return orgRequestService.findByRequestId(id);
+        }else{
+            return null;
+        }
+    }
 
 
-    @Override
     public List<? extends BaseRequest> getList(RequestFilter filter) {
 
         List<BaseRequest> merge = new ArrayList<>();
@@ -78,9 +74,11 @@ public class RequestService implements RequestInterface {
         return merge;
     }
 
-    @Override
-    public RequestListResponse add(Class<? extends BaseRequest> filter) {
-//        return List.of();
-        return null;
+    public String approveRequest(RequestCommand command) {
+        return switch(command.getRequestType()){
+            case ORGANIZATION_JOIN_REQUEST -> orgRequestService.approveRequest(command);
+            case INVENTORY_REQUEST -> inventoryRequestService.approveRequest(command);
+            case VIEW_ALL_LIST -> null;
+        };
     }
 }

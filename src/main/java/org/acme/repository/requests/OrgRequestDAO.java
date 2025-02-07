@@ -3,6 +3,7 @@ package org.acme.repository.requests;
 import io.quarkus.mongodb.panache.PanacheMongoRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.acme.dto.requests.RequestFilter;
+import org.acme.model.requests.InventoryRequest;
 import org.acme.model.requests.JoinRequest;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -15,6 +16,10 @@ import static io.netty.util.internal.StringUtil.isNullOrEmpty;
 
 @ApplicationScoped
 public class OrgRequestDAO implements PanacheMongoRepository<JoinRequest> {
+
+    public JoinRequest findByRequestId(String requestId) {
+        return find("requestId", requestId).firstResult();
+    }
 
 //    public String addRequest(JoinRequest req) {
 //        JoinRequestMapper mapper = Mappers.getMapper(JoinRequestMapper.class);

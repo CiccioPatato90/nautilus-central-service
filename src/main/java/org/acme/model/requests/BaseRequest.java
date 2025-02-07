@@ -5,7 +5,9 @@ import jakarta.persistence.Id;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.acme.model.enums.RequestStatus;
 import org.acme.model.enums.RequestType;
+import org.bson.codecs.pojo.annotations.BsonId;
 import org.bson.types.ObjectId;
 
 import java.util.List;
@@ -15,14 +17,15 @@ import java.util.List;
 @NoArgsConstructor
 //@MongoEntity(collection = "requests")
 public abstract class BaseRequest {
-    @Id
-    private ObjectId _id;  // Unique MongoDB identifier
-    private String requestId;  // Unique MongoDB identifier
-    private String associationId;  // Common reference to the organization
-    private RequestType requestType;  // Type of request: "JoinRequest", "InventoryRequest", "Generated" for Logging in algorithm execution
-    private String motivation;
-    private String status;  // Request status (Pending, Approved, etc.)
-    private List<String> tags;  // Common tagging system
-    private String updatedAt;
-    private String createdAt;
+    public String requestId;  // Unique MongoDB identifier
+    public String associationReqId;  // Mongo Id of association issuing a request
+    public String associationSQLId;  // MySQL Id of association issuing a request
+    public boolean associationConfirmed = false;
+    public String associationName;
+    public RequestType requestType;  // Type of request: "JoinRequest", "InventoryRequest", "Generated" for Logging in algorithm execution
+    public String motivation;
+    public RequestStatus status;  // Request status (Pending, Approved, etc.)
+    public List<String> tags;  // Common tagging system
+    public String updatedAt;
+    public String createdAt;
 }

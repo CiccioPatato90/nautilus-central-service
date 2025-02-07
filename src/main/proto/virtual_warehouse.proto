@@ -1,0 +1,19 @@
+syntax = 'proto3';
+package proto;
+option java_package = "org.acme.model.comm.proto";
+option java_multiple_files=true;
+
+service VirtualWarehouseService {
+  rpc ProcessInventoryRequest(InventoryRequest) returns (InventoryResponse) {}
+}
+
+message InventoryRequest {
+  map<string, int32> productIdQuantity = 1;
+  string associationId = 2;
+  string commandType = 3;
+}
+
+message InventoryResponse {
+  map<string, string> productIdCommand = 1;
+  string warehouseId = 2;
+}

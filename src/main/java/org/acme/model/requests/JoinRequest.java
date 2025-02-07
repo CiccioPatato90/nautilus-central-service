@@ -14,11 +14,11 @@ import java.util.List;
 @NoArgsConstructor
 @MongoEntity(collection = "association_requests")
 public class JoinRequest extends BaseRequest {
-    private String associationName;
-    private String date;
-    private ContactInfo contactInfo;
-    private List<String> attachments;
-    private String location;
+    public ObjectId _id;  // Unique MongoDB identifier
+    public String date;
+    public ContactInfo contactInfo;
+    public List<String> attachments;
+    public String location;
 
     @Getter
     @Setter
