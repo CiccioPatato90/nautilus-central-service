@@ -4,10 +4,13 @@ import io.smallrye.common.constraint.NotNull;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.acme.annotations.ExcludeFromDTO;
+import org.acme.annotations.GenerateDTO;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+@GenerateDTO
 @Getter
 @Setter
 @Entity
@@ -39,6 +42,7 @@ public class Tab {
     @Column(name = "tab_type", nullable = false, length = 128)
     private String tabType;
 
+    @ExcludeFromDTO
     @ManyToMany
     @JoinTable(name = "roles_tabs",
             joinColumns = @JoinColumn(name = "tab_id"),

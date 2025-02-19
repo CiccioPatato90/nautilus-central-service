@@ -4,11 +4,13 @@ import io.smallrye.common.constraint.NotNull;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.acme.model.virtual_warehouse.InventoryBox;
+import org.acme.annotations.GenerateDTO;
+import org.acme.model.virtual_warehouse.box.InventoryBox;
 
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
+@GenerateDTO
 @Getter
 @Setter
 @Entity
@@ -51,6 +53,6 @@ public class Association {
     private byte[] img64;
 
     @OneToMany(mappedBy = "fkAssociation")
-    private Set<InventoryBox> inventoryBoxes = new LinkedHashSet<>();
+    private List<InventoryBox> inventoryBoxes = new ArrayList<>();
 
 }

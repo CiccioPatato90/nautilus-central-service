@@ -1,4 +1,4 @@
-package org.acme.model.virtual_warehouse;
+package org.acme.model.virtual_warehouse.item;
 
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -9,8 +9,8 @@ import org.acme.annotations.GenerateDTO;
 @Getter
 @Setter
 @Entity
-@Table(name = "warehouse")
-public class Warehouse {
+@Table(name = "inventory_item")
+public class InventoryItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false)
@@ -19,7 +19,11 @@ public class Warehouse {
     @Column(name = "name", nullable = false, length = 128)
     private String name;
 
-    @Column(name = "location", nullable = false, length = 128)
-    private String location;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "item_category", nullable = false)
+    private InventoryItemCategory itemCategory;
+
+    @Column(name = "available_quantity")
+    private int availableQuantity = 0;
 
 }

@@ -1,4 +1,4 @@
-package org.acme.model.virtual_warehouse;
+package org.acme.model.virtual_warehouse.box;
 
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -9,17 +9,14 @@ import org.acme.annotations.GenerateDTO;
 @Getter
 @Setter
 @Entity
-@Table(name = "warehouse")
-public class Warehouse {
+@Table(name = "inventory_box_size")
+public class InventoryBoxSize {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false)
     private Integer id;
 
-    @Column(name = "name", nullable = false, length = 128)
-    private String name;
-
-    @Column(name = "location", nullable = false, length = 128)
-    private String location;
+    @Column(name = "max_size", nullable = false)
+    private Integer maxSize;
 
 }

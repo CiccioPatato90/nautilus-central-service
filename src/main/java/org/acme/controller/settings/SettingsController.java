@@ -7,7 +7,7 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import org.acme.model.settings.Tab;
+import org.acme.dto.TabDTO;
 import org.acme.service.settings.SettingsService;
 import java.util.Set;
 
@@ -19,7 +19,7 @@ public class SettingsController {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @RolesAllowed("admin")
-    public Set<Tab> list() {
+    public Set<TabDTO> list() {
         return settingsService.getTabs();
     }
 }

@@ -3,8 +3,8 @@ package org.acme.model.response.settings;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.acme.model.InventoryItem;
-import org.acme.model.InventoryItemCategory;
+import org.acme.dto.InventoryItemCategoryDTO;
+import org.acme.dto.InventoryItemDTO;
 
 import java.util.List;
 
@@ -12,6 +12,6 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 public class ItemMgmtResponse {
-    List<InventoryItemCategory> categories;
-    List<InventoryItem> items;
+    List<InventoryItemCategoryDTO> categories;
+    List<InventoryItemDTO> items;
 }

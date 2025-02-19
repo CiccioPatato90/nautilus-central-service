@@ -1,7 +1,7 @@
 package org.acme.model;
 
 import jakarta.persistence.*;
-
+import org.acme.annotations.GenerateDTO;
 
 @Entity
 @Table(name = "Utenti", schema = "nautilus")
