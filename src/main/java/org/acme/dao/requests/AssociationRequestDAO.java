@@ -9,4 +9,8 @@ public class AssociationRequestDAO implements PanacheMongoRepository<Association
     public AssociationRequest findByRequestId(String requestId) {
         return find("requestId", requestId).firstResult();
     }
+
+    public AssociationRequest findBySqlId(String sqlId) {
+        return find("associationSQLId", sqlId).firstResult();
+    }
 }

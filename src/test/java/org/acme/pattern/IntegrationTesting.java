@@ -64,6 +64,8 @@ public class IntegrationTesting {
     InventoryItemDAO inventoryItemDAO;
     @Inject
     UtenteService utenteService;
+    @Inject
+    AssociationRequestService associationRequestService;
 
     private static class UpdateAssociationRequestApprovedHandler implements Handler<AssociationRequest, AssociationRequest> {
         private BaseTransactionContext context;
@@ -170,7 +172,7 @@ public class IntegrationTesting {
 //        assertEquals(7, result);
 //    }
 
-    private static class CalculateRequestedChange implements Handler<InventoryRequest, String> {
+    private class CalculateRequestedChange implements Handler<InventoryRequest, String> {
         private BaseTransactionContext context;
 
         @Override
@@ -182,7 +184,7 @@ public class IntegrationTesting {
             context.put("requestedQuantity", totalRequested);
             context.put("inventoryRequest", input);
             this.context.logStep("Calculated Request Inventory Change: "+ totalRequested);
-            return input.getAssociationSQLId();
+            return associationRequestService.getSqlId(input.getAssociationReqId());
         }
 
         @Override
@@ -311,12 +313,12 @@ public class IntegrationTesting {
         @Override
         public InventoryRequest process(InventoryBox input) {
             var req = (InventoryRequest) context.get("inventoryRequest");
-            var associationModel = (Association) context.get("associationEntity");
+//            var associationModel = (Association) context.get("associationEntity");
             String now = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
             req.setUpdatedAt(now);
             req.setStatus(RequestStatus.APPROVED);
-            req.setAssociationName(associationModel.getName());
             req.setApprovedBy(utenteService.getCurrentUtenteName());
+            req.setAssociationReqId(utenteService.getCurrentUtenteName());
             context.put("inventoryRequest", req);
             this.context.logStep("Updated Mongo Request to " + req.getStatus().toString());
             return req;
@@ -339,7 +341,6 @@ public class IntegrationTesting {
 //                            context.logStep("Fetched Request "+ base.requestId);
 //                            return (InventoryRequest) base;
 //                        }, () -> {
-////                    ROLLBACK CALLBACK
 //                });
 //
 //        DatabaseHandler<InventoryBox, InventoryBox, InventoryBoxDAO> sqlPersistInventoryBoxHandler =
@@ -352,7 +353,6 @@ public class IntegrationTesting {
 //                                context.put("rollback_SQLRequest", modelId);
 //                                return model;
 //                            }
-////                            TODO: FIX THIS IN ORDER TO HAVE NICER RETURN ALSO FOR NULL
 //                            return model;
 //                        },
 //                        () -> {
@@ -395,13 +395,17 @@ public class IntegrationTesting {
 //        assertEquals("IR12555", result);
 //    }
 
-    private static class CheckAssociationVerified implements Handler<ProjectRequest, ProjectRequest> {
+    public static class CheckAssociationVerified implements Handler<ProjectRequest, ProjectRequest> {
         private BaseTransactionContext context;
+
+        @Inject
+        AssociationRequestService associationRequestService;
 
         @Override
         public ProjectRequest process(ProjectRequest input) {
-            if (input.getAssociationSQLId() == null || !input.associationConfirmed) {
-                context.setError(new AssociationNotConfirmedException(input.getRequestId()));
+            var associationConfirmed = associationRequestService.checkAssociationConfirmed(input.getAssociationReqId());
+            if (!associationConfirmed) {
+                context.setError(new AssociationNotConfirmedException(input.get_id().toString()));
             }
             return input;
         }
@@ -437,7 +441,7 @@ public class IntegrationTesting {
 
             return AllocationRequest.newBuilder().
                     addProjects(Project.newBuilder()
-                            .setId(req.getRequestId())
+                            .setId(req.get_id().toString())
                             .setName(req.getProjectName())
                             .putAllRequirements(requiredItems)
                             .setPriority(1)

@@ -3,13 +3,12 @@ package org.acme.service.requests;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.acme.dto.AssociationDTO;
+import org.acme.dto.AssociationRequestDTO;
+import org.acme.model.requests.association.AssociationRequest;
 import org.acme.model.requests.common.RequestFilter;
 import org.acme.model.Association;
 import org.acme.model.enums.requests.RequestStatus;
-import org.acme.model.requests.base.BaseRequest;
-import org.acme.model.requests.association.AssociationRequest;
 import org.acme.model.requests.common.RequestCommand;
-import org.acme.model.response.requests.RequestListResponse;
 import org.acme.dao.requests.AssociationRequestDAO;
 import org.acme.service.settings.AssociationSettingsService;
 import org.bson.Document;
@@ -20,23 +19,22 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-import static org.acme.model.enums.requests.RequestType.VIEW_ALL_LIST;
-import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
-import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
+import static io.netty.util.internal.StringUtil.isNullOrEmpty;
 
 @ApplicationScoped
-public class AssociationRequestService implements RequestInterface {
+public class AssociationRequestService{
     @Inject
     AssociationRequestDAO associationRequestDAO;
     @Inject
     AssociationSettingsService associationSettingsService;
+    @Inject
+    CommonRequestService commonRequestService;
 
-    @Override
-    public List<? extends BaseRequest> getList(RequestFilter filter) {
-        if (filter == null || filter.isEmpty() || filter.getRequestType().equals(VIEW_ALL_LIST)) {
-            var list = associationRequestDAO.findAll().list();
-            return list;
+    public List<AssociationRequestDTO> getList(RequestFilter filter) {
+        if (filter == null || filter.isEmpty()) {
+            return associationRequestDAO.findAll().list().stream().map(AssociationRequestDTO::fromEntity).collect(Collectors.toList());
         }
 
         // Build the query dynamically using a Map
@@ -46,11 +44,6 @@ public class AssociationRequestService implements RequestInterface {
         addFilter(queryMap, "location", filter.getLocation(), true);
         addFilter(queryMap, "status", filter.getStatus().toString(), false);
 
-        // Tags filter (Array field)
-//        if (filter.getTags() != null && !filter.getTags().isEmpty()) {
-//            queryMap.put("tags", Map.of("$in", filter.getTags()));
-//        }
-
         // Date range filter
         if (filter.getDateFrom() != null && filter.getDateTo() != null) {
             queryMap.put("date", Map.of("$gte", filter.getDateFrom(), "$lte", filter.getDateTo()));
@@ -58,33 +51,31 @@ public class AssociationRequestService implements RequestInterface {
 
         Bson bsonQuery = new Document(queryMap);
 
-        return associationRequestDAO.find(bsonQuery).list();
+        return associationRequestDAO.find(bsonQuery).list().stream().map(AssociationRequestDTO::fromEntity).collect(Collectors.toList());
     }
 
-    @Override
-    public RequestListResponse add(Class<? extends BaseRequest> request) {
-//        return List.of();
-        return null;
+    public String add(AssociationRequestDTO request) {
+        var req = AssociationRequestDTO.toEntity(request);
+
+        req.createdAt = String.valueOf(Instant.now());
+        req.updatedAt = req.createdAt;
+        req.status = RequestStatus.PENDING;
+
+        var id = this.persist(req);
+        System.out.println("Saved Request with ID: "+ id);
+        return id;
     }
 
-    public int persist(AssociationRequest request) {
+    public String persist(AssociationRequest request) {
         this.associationRequestDAO.persist(request);
-        return 1;
-    }
-
-    @Override
-    public BaseRequest findByRequestId(String id) {
-        var req = associationRequestDAO.findByRequestId(id);
-        req.setAssociationConfirmed(true);
-        return req;
+        return request._id.toString();
     }
 
 
-    @Override
     public String approveRequest(RequestCommand command) {
         // 1. Retrieve the request from MongoDB
 //        var req = orgRequestDAO.findById(new ObjectId(command.getObjectMongoId()));
-        var req = associationRequestDAO.findByRequestId(command.getRequestMongoId());
+        var req = associationRequestDAO.findById(commonRequestService.getObjectId(command.getRequestId()));
         if (req == null) {
             throw new IllegalArgumentException("Request not found");
         }
@@ -121,16 +112,6 @@ public class AssociationRequestService implements RequestInterface {
     }
 
 
-//    private void addFilter(Map<String, Object> queryMap, String field, String value, boolean useRegex) {
-//        if (!isNullOrEmpty(value)) {
-//            if (useRegex) {
-//                queryMap.put(field, Map.of("$regex", value, "$options", "i")); // Case-insensitive regex
-//            } else {
-//                queryMap.put(field, value);
-//            }
-//        }
-//    }
-
     private Association reqToModel(AssociationRequest req){
         var model = new Association();
         model.setName(req.getAssociationName());
@@ -144,5 +125,36 @@ public class AssociationRequestService implements RequestInterface {
 
     public void delete(AssociationRequest req){
         this.associationRequestDAO.delete(req);
+    }
+
+    private void addFilter(Map<String, Object> queryMap, String field, String value, boolean useRegex) {
+        if (!isNullOrEmpty(value)) {
+            if (useRegex) {
+                queryMap.put(field, Map.of("$regex", value, "$options", "i")); // Case-insensitive regex
+            } else {
+                queryMap.put(field, value);
+            }
+        }
+    }
+
+    public AssociationRequestDTO findByObjectId(String requestId) {
+        var req = associationRequestDAO.findById(commonRequestService.getObjectId(requestId));
+        req.setAssociationConfirmed(true);
+        return AssociationRequestDTO.fromEntity(req);
+    }
+
+    public Boolean checkAssociationConfirmed(String associationReqId) {
+        var req = findByObjectId(associationReqId);
+        return req.getAssociationConfirmed();
+    }
+
+    public String getSqlId(String associationReqId) {
+        var req = findByObjectId(associationReqId);
+        return req.getAssociationSQLId();
+    }
+
+    public String getObjectId(String associationSqlId) {
+        var req = associationRequestDAO.findBySqlId(associationSqlId);
+        return req.get_id().toString();
     }
 }

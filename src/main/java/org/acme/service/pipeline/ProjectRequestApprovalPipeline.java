@@ -1,5 +1,6 @@
 package org.acme.service.pipeline;
 
+import jakarta.inject.Inject;
 import org.acme.model.enums.projects.ProjectStatus;
 import org.acme.model.enums.requests.RequestStatus;
 import org.acme.model.requests.project.ProjectAllocatedResources;
@@ -9,6 +10,7 @@ import org.acme.model.virtual_warehouse.item.InventoryItem;
 import org.acme.pattern.Handler;
 import org.acme.pattern.context.BaseTransactionContext;
 import org.acme.pattern.exceptions.AssociationNotConfirmedException;
+import org.acme.service.requests.AssociationRequestService;
 import resourceallocation.*;
 import java.util.List;
 import java.util.Map;
@@ -16,14 +18,17 @@ import java.util.stream.Collectors;
 
 public class ProjectRequestApprovalPipeline {
 
-
     public static class CheckAssociationVerified implements Handler<ProjectRequest, ProjectRequest> {
         private BaseTransactionContext context;
 
+        @Inject
+        AssociationRequestService associationRequestService;
+
         @Override
         public ProjectRequest process(ProjectRequest input) {
-            if (input.getAssociationSQLId() == null || !input.associationConfirmed) {
-                context.setError(new AssociationNotConfirmedException(input.getRequestId()));
+            var associationConfirmed = associationRequestService.checkAssociationConfirmed(input.getAssociationReqId());
+            if (!associationConfirmed) {
+                context.setError(new AssociationNotConfirmedException(input.get_id().toString()));
             }
             return input;
         }
@@ -63,7 +68,7 @@ public class ProjectRequestApprovalPipeline {
 
             return AllocationRequest.newBuilder().
                     addProjects(Project.newBuilder()
-                            .setId(req.getRequestId())
+                            .setId(req.get_id().toString())
                             .setName(req.getProjectName())
                             .putAllRequirements(requiredItems)
                             .setPriority(1)

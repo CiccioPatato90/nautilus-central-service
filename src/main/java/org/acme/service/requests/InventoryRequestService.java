@@ -3,8 +3,9 @@ package org.acme.service.requests;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import org.acme.dto.InventoryRequestDTO;
 import org.acme.model.enums.requests.RequestStatus;
-import org.acme.model.requests.base.BaseRequest;
+import org.acme.model.requests.association.AssociationRequest;
 import org.acme.model.requests.common.RequestCommand;
 import org.acme.model.requests.common.RequestFilter;
 import org.acme.model.requests.inventory.InventoryChange;
@@ -14,7 +15,6 @@ import org.acme.model.virtual_warehouse.box.InventoryBox;
 import org.acme.model.virtual_warehouse.box.InventoryBoxSize;
 import org.acme.dao.AssociationDAO;
 import org.acme.dao.requests.InventoryRequestDAO;
-import org.acme.dao.requests.AssociationRequestDAO;
 import org.acme.dao.settings.InventoryItemDAO;
 import org.acme.dao.virtual_warehouse.InventoryBoxDAO;
 import org.acme.dao.virtual_warehouse.InventoryBoxSizeDAO;
@@ -26,11 +26,12 @@ import org.bson.conversions.Bson;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
-import static org.acme.model.enums.requests.RequestType.VIEW_ALL_LIST;
+import static io.netty.util.internal.StringUtil.isNullOrEmpty;
 
 @ApplicationScoped
-public class InventoryRequestService implements RequestInterface{
+public class InventoryRequestService{
     @Inject
     InventoryRequestDAO inventoryRequestDAO;
 
@@ -51,13 +52,20 @@ public class InventoryRequestService implements RequestInterface{
     @Inject
     InventoryBoxSizeDAO inventoryBoxSizeDAO;
     @Inject
-    AssociationRequestDAO associationRequestDAO;
+    CommonRequestService commonRequestService;
+    @Inject
+    AssociationRequestService associationRequestService;
 
-    @Override
-    public List<? extends BaseRequest> getList(RequestFilter filter) {
-        if (filter == null || filter.isEmpty() || filter.getRequestType().equals(VIEW_ALL_LIST)) {
-            var list = inventoryRequestDAO.findAll().list();
-            return list;
+
+    public Map<String, List<InventoryRequestDTO>> getList(RequestFilter filter) {
+        if (filter == null || filter.isEmpty()) {
+            return inventoryRequestDAO.findAll().list()
+                    .stream()
+                    .map(InventoryRequestDTO::fromEntity)
+                    .collect(Collectors.groupingBy(
+                            invReq -> associationRequestService.findByObjectId(invReq.getAssociationReqId()).getAssociationName(),
+                            Collectors.toList()
+                    ));
         }
 
         // Build the query dynamically using a Map
@@ -67,10 +75,6 @@ public class InventoryRequestService implements RequestInterface{
 //        addFilter(queryMap, "associationConfirmed", filter.getAssociationConfirmed(), true);
         addFilter(queryMap, "status", filter.getStatus().toString(), false);
 
-        // Tags filter (Array field)
-//        if (filter.getTags() != null && !filter.getTags().isEmpty()) {
-//            queryMap.put("tags", Map.of("$in", filter.getTags()));
-//        }
 
         // Date range filter
         if (filter.getDateFrom() != null && filter.getDateTo() != null) {
@@ -79,37 +83,43 @@ public class InventoryRequestService implements RequestInterface{
 
         Bson bsonQuery = new Document(queryMap);
 
-        return inventoryRequestDAO.find(bsonQuery).list();
+        return inventoryRequestDAO.find(bsonQuery).list()
+                .stream()
+                .map(InventoryRequestDTO::fromEntity)
+                .collect(Collectors.groupingBy(
+                        invReq -> associationRequestService.findByObjectId(invReq.getAssociationReqId()).getAssociationName(),
+                        Collectors.toList()
+                ));
     }
 
-    @Override
-    public RequestListResponse add(Class<? extends BaseRequest> request) {
-        return null;
-    }
 
-    @Override
-    public BaseRequest findByRequestId(String id) {
-        var req = inventoryRequestDAO.findByRequestId(id);
-        if (req.getAssociationName() == null && req.getAssociationReqId() != null) {
-            var assocReq = associationRequestDAO.findByRequestId(req.getAssociationReqId());
-            if (assocReq.getAssociationSQLId() != null) {
-                req.setAssociationName(associationDAO.find("id", assocReq.getAssociationSQLId()).firstResult().getName());
-                //FLAG TO CHECK IF THE ASSOCIATION ISSUING THE REQUEST HAS ALREADY BEEN CONFIRMED (SAVE IN MYSQL DB)
-                req.setAssociationConfirmed(true);
-                req.setAssociationSQLId(assocReq.getAssociationSQLId());
-                inventoryRequestDAO.update(req);
-            }
+    public String add(InventoryRequestDTO request) {
+        var req = InventoryRequestDTO.toEntity(request);
+
+        var associationRequestId = associationRequestService.getObjectId(String.valueOf(req.getAssociationSqlId()));
+
+        if (associationRequestId != null) {
+            req.setAssociationReqId(associationRequestId);
+            req.createdAt = String.valueOf(Instant.now());
+            req.updatedAt = req.createdAt;
+            req.status = RequestStatus.PENDING;
+
+            var id = this.persist(req);
+            System.out.println("Saved Request with ID: "+ id);
+            return id;
+        }else{
+            System.out.println("Association not verifided for inventory request: " + req.get_id().toString());
+            return null;
         }
-        return req;
+
     }
 
-    @Override
     @Transactional
     public String approveRequest(RequestCommand command) {
 //        HOW DO WE MANAGE INVENTORY ITEM REQUEST APPROVAL, we send it to virtual
 //          1. GET REQUEST FROM MONGO, SAVE IT IN CONTEXT
 //          <STRING><INVENTORY_REQUEST> -> GetInventoryRequest()
-        var req = inventoryRequestDAO.findByRequestId(command.getRequestMongoId());
+        var req = inventoryRequestDAO.findByObjectId(commonRequestService.getObjectId(command.getRequestId()));
 //        now we have to extract from teh request the association
 
 //        3. FROM THE REQUEST CALCULATE THE NUMBER OF NEW ITEMS WE ARE REQUESTED TO INSERT
@@ -119,7 +129,7 @@ public class InventoryRequestService implements RequestInterface{
                 .sum();
 //        4. EXTRACT ASSOCIATION FROM MONGO DOCUMENT USING SQL ID
 //        <STRING><ASSOCIATION> -> GetAssociationModel()
-        var assoc = associationDAO.findById(Long.valueOf(req.associationSQLId));
+        var assoc = associationDAO.findById(Long.valueOf(req.getAssociationReqId()));
 //        5. FROM ASSOCIATION GET INVENTORY BOX ASSIGNED -> GetAssignedBox()
 //        <ASSOCIATION><INVENTORY_BOX ? NULL>
         InventoryBox assigned = assoc.getInventoryBoxes().stream()
@@ -193,7 +203,6 @@ public class InventoryRequestService implements RequestInterface{
         return "Everything OK";
     }
 
-
     private InventoryBoxSize getMinimumNeededSize(int requiredSize) {
         return inventoryBoxSizeDAO.listAll().stream()
                 .filter(box -> box.getMaxSize() >= requiredSize)
@@ -201,13 +210,27 @@ public class InventoryRequestService implements RequestInterface{
                 .orElse(null);
     }
 
-
-    public void persist(InventoryRequest request){
+    public String persist(InventoryRequest request){
         this.inventoryRequestDAO.persistOrUpdate(request);
-//        this.inventoryRequestDAO.persist(request);
+        return request._id.toString();
     }
+
     public void delete(InventoryRequest request){
         this.inventoryRequestDAO.delete(request);
     }
 
+    private void addFilter(Map<String, Object> queryMap, String field, String value, boolean useRegex) {
+        if (!isNullOrEmpty(value)) {
+            if (useRegex) {
+                queryMap.put(field, Map.of("$regex", value, "$options", "i")); // Case-insensitive regex
+            } else {
+                queryMap.put(field, value);
+            }
+        }
+    }
+
+    public InventoryRequestDTO findByObjectId(String requestId) {
+        var req = inventoryRequestDAO.findById(commonRequestService.getObjectId(requestId));
+        return InventoryRequestDTO.fromEntity(req);
+    }
 }
