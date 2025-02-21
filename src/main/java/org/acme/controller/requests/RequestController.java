@@ -4,31 +4,25 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
-import org.acme.model.requests.association.AssociationRequest;
 import org.acme.model.requests.common.RequestFilter;
-import org.acme.model.requests.base.BaseRequest;
 import org.acme.model.requests.common.RequestCommand;
-import org.acme.model.response.requests.RequestCommonData;
-import org.acme.model.response.requests.RequestListResponse;
-import org.acme.service.requests.RequestService;
+import org.acme.model.response.requests.*;
+import org.acme.service.requests.AssociationRequestService;
+import org.acme.service.requests.InventoryRequestService;
+import org.acme.service.requests.ProjectRequestService;
+import org.acme.service.requests.CommonRequestService;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 
 @Path("/api/requests")
 public class RequestController {
-
     @Inject
-    RequestService requestService;
-
-    @POST
-    @Path("list")
-    @Produces(MediaType.APPLICATION_JSON)
-    @Consumes(MediaType.APPLICATION_JSON)
-    @RolesAllowed("user")
-    public RequestListResponse list(@RequestBody RequestFilter filters) {
-        var res = requestService.get(filters);
-        return res;
-    }
+    CommonRequestService commonRequestService;
+    @Inject
+    AssociationRequestService associationRequestService;
+    @Inject
+    InventoryRequestService inventoryRequestService;
+    @Inject
+    ProjectRequestService projectRequestService;
 
     @GET
     @Path("common")
@@ -36,7 +30,31 @@ public class RequestController {
     @Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed("user")
     public RequestCommonData common() {
-        var res = requestService.getCommonData();
+        var res = commonRequestService.getCommonData();
+        return res;
+    }
+
+
+    @POST
+    @Path("list")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    @RolesAllowed("user")
+    public RequestListResponse list(@RequestBody RequestFilter filters) {
+        var res = new RequestListResponse();
+
+        switch(filters.getRequestType()){
+            case ASSOCIATION_REQUEST -> {
+                res.setAssociationRequests(associationRequestService.getList(filters));
+            }
+            case INVENTORY_REQUEST -> {
+                res.setInventoryRequests(inventoryRequestService.getList(filters));
+            }
+            case PROJECT_REQUEST -> {
+                res.setProjectRequests(projectRequestService.getList(filters));
+            }
+        };
+
         return res;
     }
 
@@ -45,21 +63,47 @@ public class RequestController {
     @Path("add")
     @Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed("user")
-    public String addRequest(@RequestBody RequestCommand command) {
-//        TODO: FIX THIS!!!
-        var reqId = requestService.addRequest(command);
-        return " FAKE ";
+    public AddRequestResponse addRequest(@RequestBody RequestCommand command) {
+        var res = new AddRequestResponse();
+
+        switch(command.getRequestType()){
+            case ASSOCIATION_REQUEST -> {
+                res.setRequestMongoID(associationRequestService.add(command.getAssociationRequestDTO()));
+            }
+            case INVENTORY_REQUEST -> {
+                res.setRequestMongoID(inventoryRequestService.add(command.getInventoryRequestDTO()));
+            }
+            case PROJECT_REQUEST -> {
+                res.setRequestMongoID(projectRequestService.add(command.getProjectRequestDTO()));
+            }
+        };
+
+        return res;
     }
 
 
     @POST
-    @Path("get/{id}")
+    @Path("get")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed("user")
-    public BaseRequest getRequest(@PathParam("id") String id) {
-        var req = requestService.getByRequestId(id);
-        return req;
+    public GetRequestResponse getRequest(@RequestBody RequestCommand command) {
+
+        var res = new GetRequestResponse();
+
+        switch(command.getRequestType()){
+            case ASSOCIATION_REQUEST -> {
+                res.setAssociationRequestDTO(associationRequestService.findByObjectId(command.getRequestId()));
+            }
+            case INVENTORY_REQUEST -> {
+                res.setInventoryRequestDTO(inventoryRequestService.findByObjectId(command.getRequestId()));
+            }
+            case PROJECT_REQUEST -> {
+                res.setProjectRequestDTO(projectRequestService.findByObjectId(command.getRequestId()));
+            }
+        };
+
+        return res;
     }
 
 
@@ -68,8 +112,21 @@ public class RequestController {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed("user")
-    public Response approveRequest(@RequestBody RequestCommand command) {
-        var req = requestService.approveRequest(command);
-        return Response.ok(req).build();
+    public ApproveRequestResponse approveRequest(@RequestBody RequestCommand command) {
+        var res = new ApproveRequestResponse();
+
+        switch(command.getRequestType()){
+            case ASSOCIATION_REQUEST -> {
+                associationRequestService.approveRequest(command);
+            }
+            case INVENTORY_REQUEST -> {
+                inventoryRequestService.approveRequest(command);
+            }
+            case PROJECT_REQUEST -> {
+                projectRequestService.approveRequest(command);
+            }
+        };
+
+        return res;
     }
 }

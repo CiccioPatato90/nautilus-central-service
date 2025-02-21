@@ -5,7 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.acme.annotations.GenerateDTO;
-import org.acme.model.requests.base.BaseRequest;
+import org.acme.model.enums.requests.RequestStatus;
 import org.bson.types.ObjectId;
 import java.util.List;
 
@@ -14,12 +14,20 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @MongoEntity(collection = "association_requests")
-public class AssociationRequest extends BaseRequest {
+public class AssociationRequest {
     public ObjectId _id;  // Unique MongoDB identifier
-    public String date;
+    public String associationName;
+    public Boolean associationConfirmed;
+    public String associationSQLId;  // MySQL Id of association issuing a request
+    public String motivation;
+    public RequestStatus status;  // Request status (Pending, Approved, etc.)
+    public String updatedAt;
+    public String createdAt;
+
     public ContactInfo contactInfo;
     public List<String> attachments;
     public String location;
+
 
     @Getter
     @Setter
@@ -27,18 +35,4 @@ public class AssociationRequest extends BaseRequest {
         private String email;
         private String phone;
     }
-
-//    @Getter
-//    @Setter
-//    public static class History {
-//        private String changedBy;
-//        private String timestamp;
-//        private Changes changes;
-//
-//        @Getter
-//        @Setter
-//        public static class Changes {
-//            private String motivation;
-//        }
-//    }
 }

@@ -1,49 +1,59 @@
 package org.acme.service.requests;
 
-import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.acme.dao.settings.InventoryItemDAO;
+import org.acme.dto.InventoryRequestDTO;
+import org.acme.dto.ProjectRequestDTO;
 import org.acme.model.enums.projects.ProjectStatus;
 import org.acme.model.enums.requests.RequestStatus;
-import org.acme.model.requests.base.BaseRequest;
 import org.acme.model.requests.common.RequestCommand;
 import org.acme.model.requests.common.RequestFilter;
+import org.acme.model.requests.project.ProjectAllocatedResources;
+import org.acme.model.requests.project.ProjectItem;
 import org.acme.model.requests.project.ProjectRequest;
-import org.acme.model.response.requests.RequestListResponse;
 import org.acme.dao.requests.ProjectRequestDAO;
 import org.acme.model.virtual_warehouse.item.InventoryItem;
 import org.acme.pattern.context.BaseTransactionContext;
+import org.acme.pattern.exceptions.AssociationNotConfirmedException;
 import org.acme.pattern.handlers.DatabaseHandler;
 import org.acme.pattern.pipeline.Pipeline;
 import org.acme.service.pipeline.ProjectAllocationCall;
 import org.acme.service.pipeline.ProjectRequestApprovalPipeline;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import org.bson.types.ObjectId;
+import resourceallocation.*;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-import static org.acme.model.enums.requests.RequestType.VIEW_ALL_LIST;
+import static io.netty.util.internal.StringUtil.isNullOrEmpty;
 
 @ApplicationScoped
-public class ProjectRequestService implements RequestInterface{
+public class ProjectRequestService{
     @Inject
     ProjectRequestDAO projectRequestDAO;
     @Inject
     InventoryItemDAO inventoryItemDAO;
+    @Inject
+    CommonRequestService commonRequestService;
+    @Inject
+    AssociationRequestService associationRequestService;
 
-
-    @Override
-    public List<? extends BaseRequest> getList(RequestFilter filter) {
-        if (filter == null || filter.isEmpty() || filter.getRequestType().equals(VIEW_ALL_LIST)) {
-            var list = projectRequestDAO.findAll().list();
-            return list;
+    public Map<String, List<ProjectRequestDTO>> getList(RequestFilter filter) {
+        if (filter == null || filter.isEmpty()) {
+            return projectRequestDAO.findAll().list()
+                    .stream()
+                    .map(ProjectRequestDTO::fromEntity)
+                    .collect(Collectors.groupingBy(
+                            projReq -> associationRequestService.findByObjectId(projReq.getAssociationReqId()).getAssociationName(),
+                            Collectors.toList()
+                    ));
         }
 
         // Build the query dynamically using a Map
@@ -53,10 +63,6 @@ public class ProjectRequestService implements RequestInterface{
 //        addFilter(queryMap, "associationConfirmed", filter.getAssociationConfirmed(), true);
         addFilter(queryMap, "status", filter.getStatus().toString(), false);
 
-        // Tags filter (Array field)
-//        if (filter.getTags() != null && !filter.getTags().isEmpty()) {
-//            queryMap.put("tags", Map.of("$in", filter.getTags()));
-//        }
 
         // Date range filter
         if (filter.getDateFrom() != null && filter.getDateTo() != null) {
@@ -65,33 +71,136 @@ public class ProjectRequestService implements RequestInterface{
 
         Bson bsonQuery = new Document(queryMap);
 
-        return projectRequestDAO.find(bsonQuery).list();
+        return projectRequestDAO.find(bsonQuery).list()
+                .stream()
+                .map(ProjectRequestDTO::fromEntity)
+                .collect(Collectors.groupingBy(
+                        projReq -> associationRequestService.findByObjectId(projReq.getAssociationReqId()).getAssociationName(),
+                        Collectors.toList()
+                ));
     }
 
-    @Override
-    public RequestListResponse add(Class<? extends BaseRequest> request) {
+    public String add(ProjectRequestDTO request) {
 //          WE NEED TO ADD A PROJECT REQUEST, GIVEN THAT WE HAVE ITEMS + QUANTITIES NEEDED
 //          AND REQUEST ISSUER
-        return null;
+
+        var req = ProjectRequestDTO.toEntity(request);
+
+        var associationRequestId = associationRequestService.getObjectId(String.valueOf(req.getAssociationSqlId()));
+
+        if (associationRequestId != null) {
+            req.setAssociationReqId(associationRequestId);
+            req.createdAt = String.valueOf(Instant.now());
+            req.updatedAt = req.createdAt;
+            req.status = RequestStatus.PENDING;
+//            here we need to call the grpc service and calculate the feasibility of the project and allocated the resources
+
+            var associationConfirmed = associationRequestService.checkAssociationConfirmed(req.getAssociationReqId());
+            if (!associationConfirmed) {
+                return null;
+            }
+
+            var availableItems = inventoryItemDAO.findAllAvailable();
+            System.out.println("Found " + availableItems.size() + " available items");
+
+            req.set_id(new ObjectId());
+
+            var allocationRequest = createAllocationRequest(req, availableItems);
+
+            var channel = ManagedChannelBuilder.forAddress("localhost", 8082).usePlaintext().build();
+
+            var stub = MutinyResourceAllocationServiceGrpc.newMutinyStub(channel);
+
+            //find a way to deinit channel!!!!!
+            AllocationResponse response = stub.allocateResources(allocationRequest)
+                    .onItem().invoke(resp ->
+                            System.out.println("Received status: " + resp.getStatus().name() + " and ID: " + resp.getAllocationId()))
+                    .await().indefinitely();
+
+            channel.shutdown();
+
+            var processedRequest = processAllocationResponse(req, response);
+
+            var id = this.persist(processedRequest);
+            System.out.println("Saved Request with ID: "+ id);
+            return id;
+        }else{
+            System.out.println("Association not verifided for inventory request: " + req.get_id().toString());
+            return null;
+        }
     }
 
-    @Override
-    public BaseRequest findByRequestId(String id) {
-        var req = projectRequestDAO.findByRequestId(id);
+    private ProjectRequest processAllocationResponse(ProjectRequest req, AllocationResponse response) {
+        req.setAllocationId(response.getAllocationId());
+
+        ProjectAllocatedResources allocatedResources = response.getProjectAllocationsMap().entrySet()
+                .stream()
+                .findFirst()
+                .map(entry -> {
+                    ProjectAllocatedResources par = new ProjectAllocatedResources();
+                    // Parse the key as the completion percentage.
+                    par.setCompletionPercentage(Double.parseDouble(entry.getKey()));
+                    // Convert the list of ResourceAllocation messages to a Map<resourceId, allocatedAmount>
+                    Map<String, Integer> allocationMap = entry.getValue().getResourceAllocationsList()
+                            .stream()
+                            .collect(Collectors.toMap(
+                                    ResourceAllocation::getResourceId,
+                                    ResourceAllocation::getAllocatedAmount
+                            ));
+                    par.setAllocationMap(allocationMap);
+                    return par;
+                })
+                .orElse(null);
+
+        req.setAllocatedResources(allocatedResources);
+
         return req;
     }
 
-    @Override
+    private AllocationRequest createAllocationRequest(ProjectRequest req, List<InventoryItem> availableItems) {
+        Map<String, Integer> requiredItems = req.getRequiredItemsSQLId().stream()
+                .collect(Collectors.toMap(
+                        item -> String.valueOf(item.getSqlId()),
+                        ProjectItem::getQuantityNeeded
+                ));
+
+        System.out.println("Calcolated Required Items.");
+
+        List<Resource> resources = availableItems.stream().map(inventoryItem -> Resource.newBuilder()
+                        .setId(String.valueOf(inventoryItem.getId()))
+                        .setName(inventoryItem.getName())
+                        .setCapacity(inventoryItem.getAvailableQuantity())
+                        .setCost(10.0)
+                        .build())
+                .collect(Collectors.toList());
+
+        System.out.println("Mapping to Resources List.");
+
+        return AllocationRequest.newBuilder().
+                addProjects(Project.newBuilder()
+                        .setId(req.get_id().toString())
+                        .setName(req.getProjectName())
+                        .putAllRequirements(requiredItems)
+                        .setPriority(1)
+                        .build())
+                .addAllResources(resources)
+                .setStrategy(AllocationStrategy.newBuilder()
+                        .setStrategyName("default")
+                        .build())
+                .build();
+    }
+
+
     public String approveRequest(RequestCommand command) {
         final BaseTransactionContext context = new BaseTransactionContext();
 
         DatabaseHandler<String, ProjectRequest, ProjectRequestService> mongoGetProjectRequestHandler =
                 new DatabaseHandler<>(this,
                         (reqId, repository) -> {
-                            var base = findByRequestId(reqId);
-                            context.logStep("Fetched Request "+ base.requestId);
+                            var base = findByObjectId(reqId);
+                            context.logStep("Fetched Request: "+ base.get_id().toString());
                             context.put("projectRequest", base);
-                            return (ProjectRequest) base;
+                            return ProjectRequestDTO.toEntity(base);
                         }, () -> {});
 
         DatabaseHandler<ProjectRequest, List<InventoryItem>, InventoryItemDAO> fetchInventoryItemsList =
@@ -107,7 +216,7 @@ public class ProjectRequestService implements RequestInterface{
                         (req, repository) -> {
                             repository.persist(req);
                             context.put("rollback_mongoRequest", req);
-                            return req.requestId;
+                            return req.get_id().toString();
                         },
                         () -> {
                             ProjectRequest req = context.get("projectRequest");
@@ -133,12 +242,12 @@ public class ProjectRequestService implements RequestInterface{
         //8. update the projectResource allocation map
         .addHandler(mongoPersistRequestHandler);
 
-        return pipe.execute(command.getRequestMongoId());
+        return pipe.execute(command.getRequestId());
     }
 
     public String persist(ProjectRequest req) {
         projectRequestDAO.persistOrUpdate(req);
-        return req.getRequestId();
+        return req.get_id().toString();
     }
 
     public void delete(ProjectRequest req) {
@@ -147,5 +256,20 @@ public class ProjectRequestService implements RequestInterface{
 
     public List<ProjectRequest> getListByStatus(ProjectStatus projectStatus){
         return projectRequestDAO.find("status = ?1 and projectStatus = ?2", RequestStatus.APPROVED, projectStatus).list();
+    }
+
+    private void addFilter(Map<String, Object> queryMap, String field, String value, boolean useRegex) {
+        if (!isNullOrEmpty(value)) {
+            if (useRegex) {
+                queryMap.put(field, Map.of("$regex", value, "$options", "i")); // Case-insensitive regex
+            } else {
+                queryMap.put(field, value);
+            }
+        }
+    }
+
+    public ProjectRequestDTO findByObjectId(String requestId) {
+        var req = projectRequestDAO.findById(commonRequestService.getObjectId(requestId));
+        return ProjectRequestDTO.fromEntity(req);
     }
 }

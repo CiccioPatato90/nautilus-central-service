@@ -6,9 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.acme.annotations.GenerateDTO;
 import org.acme.model.enums.projects.ProjectStatus;
-import org.acme.model.requests.base.BaseRequest;
+import org.acme.model.enums.requests.RequestStatus;
 import org.bson.types.ObjectId;
-import resourceallocation.ProjectAllocation;
 
 import java.util.List;
 
@@ -17,14 +16,19 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @MongoEntity(collection = "project_requests")
-public class ProjectRequest extends BaseRequest {
+public class ProjectRequest{
     public ObjectId _id;
+    public String associationReqId;
+    public Long associationSqlId;
     public String projectName;
     public String description;
     public double budget;
     public List<ProjectItem> requiredItemsSQLId;
     public List<ProjectStep> projectPlan;
     public ProjectStatus projectStatus;
+    public RequestStatus status;  // Request status (Pending, Approved, etc.)
+    public String updatedAt;
+    public String createdAt;
 //    REDIS/Mongo retrieval of previously computed allocation responses
     private String allocationId;
 //    store project allocation to have a consistent projectCompletion + allocation

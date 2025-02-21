@@ -6,15 +6,18 @@ import lombok.Getter;
 import lombok.Setter;
 import org.acme.annotations.GenerateDTO;
 import org.acme.model.virtual_warehouse.box.InventoryBox;
+import org.acme.model.virtual_warehouse.item.InventoryItem;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @GenerateDTO
 @Getter
 @Setter
 @Entity
-@Table(name = "Association", schema = "nautilus")
+@Table(name = "association", schema = "nautilus")
 public class Association {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
