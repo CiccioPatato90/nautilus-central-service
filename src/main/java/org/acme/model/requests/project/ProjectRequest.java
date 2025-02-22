@@ -27,6 +27,7 @@ public class ProjectRequest{
     public List<ProjectStep> projectPlan;
     public ProjectStatus projectStatus;
     public RequestStatus status;  // Request status (Pending, Approved, etc.)
+    public String approvedBy;
     public String updatedAt;
     public String createdAt;
 //    REDIS/Mongo retrieval of previously computed allocation responses

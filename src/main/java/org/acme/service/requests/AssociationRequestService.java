@@ -4,6 +4,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.acme.dto.AssociationDTO;
 import org.acme.dto.AssociationRequestDTO;
+import org.acme.dto.InventoryRequestDTO;
+import org.acme.dto.ProjectRequestDTO;
 import org.acme.model.requests.association.AssociationRequest;
 import org.acme.model.requests.common.RequestFilter;
 import org.acme.model.Association;

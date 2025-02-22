@@ -8,7 +8,7 @@ import org.acme.annotations.GenerateDTO;
 @Getter
 @Setter
 public class InventoryChange {
-    public String itemId;  // Reference to MySQL inventory item
+    public Integer itemId;
     public int requestedQuantity;
     public String changeType;  // Increase or Decrease
 }

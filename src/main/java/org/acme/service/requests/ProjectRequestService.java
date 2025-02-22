@@ -4,7 +4,6 @@ import io.grpc.ManagedChannelBuilder;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.acme.dao.settings.InventoryItemDAO;
-import org.acme.dto.InventoryRequestDTO;
 import org.acme.dto.ProjectRequestDTO;
 import org.acme.model.enums.projects.ProjectStatus;
 import org.acme.model.enums.requests.RequestStatus;
@@ -16,7 +15,6 @@ import org.acme.model.requests.project.ProjectRequest;
 import org.acme.dao.requests.ProjectRequestDAO;
 import org.acme.model.virtual_warehouse.item.InventoryItem;
 import org.acme.pattern.context.BaseTransactionContext;
-import org.acme.pattern.exceptions.AssociationNotConfirmedException;
 import org.acme.pattern.handlers.DatabaseHandler;
 import org.acme.pattern.pipeline.Pipeline;
 import org.acme.service.pipeline.ProjectAllocationCall;
@@ -254,8 +252,11 @@ public class ProjectRequestService{
         projectRequestDAO.delete(req);
     }
 
-    public List<ProjectRequest> getListByStatus(ProjectStatus projectStatus){
-        return projectRequestDAO.find("status = ?1 and projectStatus = ?2", RequestStatus.APPROVED, projectStatus).list();
+    public List<ProjectRequest> getListByProjectStatus(ProjectStatus projectStatus) {
+        return null;
+    }
+    public List<ProjectRequest> getListByRequestStatus(RequestStatus requestStatus) {
+        return this.projectRequestDAO.findByRequestStatus(requestStatus);
     }
 
     private void addFilter(Map<String, Object> queryMap, String field, String value, boolean useRegex) {
@@ -271,5 +272,12 @@ public class ProjectRequestService{
     public ProjectRequestDTO findByObjectId(String requestId) {
         var req = projectRequestDAO.findById(commonRequestService.getObjectId(requestId));
         return ProjectRequestDTO.fromEntity(req);
+    }
+
+    public List<ProjectRequestDTO> getPendingProjectRequests(String associationRequestId) {
+        return this.projectRequestDAO.findPendingRequestsByAssociationID(associationRequestId)
+                .stream()
+                .map(ProjectRequestDTO::fromEntity)
+                .toList();
     }
 }

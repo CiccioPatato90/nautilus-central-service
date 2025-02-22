@@ -3,14 +3,22 @@ package org.acme.service.requests;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import org.acme.dto.InventoryChangeDTO;
+import org.acme.dto.InventoryItemDTO;
 import org.acme.dto.InventoryRequestDTO;
+import org.acme.model.enums.projects.ProjectStatus;
 import org.acme.model.enums.requests.RequestStatus;
-import org.acme.model.requests.association.AssociationRequest;
 import org.acme.model.requests.common.RequestCommand;
 import org.acme.model.requests.common.RequestFilter;
 import org.acme.model.requests.inventory.InventoryChange;
 import org.acme.model.requests.inventory.InventoryRequest;
-import org.acme.model.response.requests.RequestListResponse;
+import org.acme.model.requests.project.ProjectAllocatedResources;
+import org.acme.model.requests.project.ProjectItem;
+import org.acme.model.requests.project.ProjectRequest;
+import org.acme.model.response.requests.inventory.SimulateAllocationStats;
+import org.acme.model.response.requests.inventory.SimulateCommand;
+import org.acme.model.response.requests.inventory.SimulateRequestResponse;
+import org.acme.model.response.requests.inventory.SimulateResourceUsage;
 import org.acme.model.virtual_warehouse.box.InventoryBox;
 import org.acme.model.virtual_warehouse.box.InventoryBoxSize;
 import org.acme.dao.AssociationDAO;
@@ -19,9 +27,12 @@ import org.acme.dao.settings.InventoryItemDAO;
 import org.acme.dao.virtual_warehouse.InventoryBoxDAO;
 import org.acme.dao.virtual_warehouse.InventoryBoxSizeDAO;
 import org.acme.dao.virtual_warehouse.WarehouseDAO;
-import org.acme.service.virtual_warehouse.VirtualWarehouseService;
+import org.acme.model.virtual_warehouse.item.InventoryItem;
+import org.acme.service.ext.ResourceAllocationService;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import org.jboss.logging.Logger;
+import resourceallocation.*;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
@@ -34,17 +45,10 @@ import static io.netty.util.internal.StringUtil.isNullOrEmpty;
 public class InventoryRequestService{
     @Inject
     InventoryRequestDAO inventoryRequestDAO;
-
     @Inject
     AssociationDAO associationDAO;
-
     @Inject
     WarehouseDAO warehouseDAO;
-
-//    @RestClient
-//    VirtualWarehouseService virtualWarehouseService;
-    @Inject
-    VirtualWarehouseService virtualWarehouseService;
     @Inject
     InventoryItemDAO inventoryItemDAO;
     @Inject
@@ -55,6 +59,10 @@ public class InventoryRequestService{
     CommonRequestService commonRequestService;
     @Inject
     AssociationRequestService associationRequestService;
+    @Inject
+    ResourceAllocationService resourceAllocationService;
+    @Inject
+    ProjectRequestService projectRequestService;
 
 
     public Map<String, List<InventoryRequestDTO>> getList(RequestFilter filter) {
@@ -114,7 +122,6 @@ public class InventoryRequestService{
 
     }
 
-    @Transactional
     public String approveRequest(RequestCommand command) {
 //        HOW DO WE MANAGE INVENTORY ITEM REQUEST APPROVAL, we send it to virtual
 //          1. GET REQUEST FROM MONGO, SAVE IT IN CONTEXT
@@ -232,5 +239,169 @@ public class InventoryRequestService{
     public InventoryRequestDTO findByObjectId(String requestId) {
         var req = inventoryRequestDAO.findById(commonRequestService.getObjectId(requestId));
         return InventoryRequestDTO.fromEntity(req);
+    }
+
+    public List<InventoryRequestDTO> getPendingInventoryRequests(String associationRequestId) {
+        return this.inventoryRequestDAO.findPendingRequestsByAssociationID(associationRequestId)
+                .stream()
+                .map(InventoryRequestDTO::fromEntity)
+                .toList();
+    }
+
+    public Map<Integer,InventoryItemDTO> getItemsMetadata(List<InventoryChangeDTO> inventoryChanges) {
+        var itemIds = inventoryChanges.stream()
+                .map(InventoryChangeDTO::getItemId).map(Long::valueOf).collect(Collectors.toList());
+
+        return inventoryItemDAO.findIdList(itemIds).stream()
+                .map(InventoryItemDTO::fromEntity)
+                .collect(Collectors.toMap(InventoryItemDTO::getId, inventoryItemDTO -> inventoryItemDTO));
+    }
+
+    public SimulateRequestResponse simulateRequest(SimulateCommand command) {
+        List<ProjectRequest> projectRequests = List.of();
+        switch(command.getSimulationType()){
+            case PENDING_PROJECTS -> {
+                projectRequests = projectRequestService.getListByRequestStatus(RequestStatus.PENDING);
+            }
+            case ALLOCATED_PROJECTS -> {
+                projectRequests = projectRequestService.getListByProjectStatus(ProjectStatus.ALLOCATED);
+            }
+        }
+
+        var availableItems = inventoryItemDAO.findAllAvailable();
+        System.out.println("Found " + availableItems.size() + " available items");
+
+        // First, convert changes to a Map for efficient lookup
+        Map<Integer, Integer> changesByItemId = command.getChanges().stream()
+                .collect(Collectors.toMap(
+                        InventoryChangeDTO::getItemId,
+                        InventoryChangeDTO::getRequestedQuantity,
+                        Integer::sum  // In case there are multiple changes for the same ID
+                ));
+
+        // Create new list with augmented quantities
+        var augmentedItems = availableItems.stream()
+//                PEEK APPLIES A FUNCTION TO THE ELEMENT OF THE STREAMS, IN PLACE
+                .peek(item -> {
+                    int additionalQuantity = changesByItemId.getOrDefault(item.getId(), 0);
+                    item.setAvailableQuantity(item.getAvailableQuantity() + additionalQuantity);
+                })
+                .toList();
+
+        var req = createAllocationRequestMPMI(projectRequests, augmentedItems);
+
+        var response = resourceAllocationService.allocateResources(req);
+
+        System.out.println(response);
+
+        var result = processAllocationResponse(projectRequests, response);
+        return result;
+    }
+
+//    MPMI STANDS FOR MULTI PROJECT MULTI ITEM
+    private AllocationRequest createAllocationRequestMPMI(List<ProjectRequest> req, List<InventoryItem> availableItems) {
+
+        //<projectRequestId, map of required items>
+        Map<ProjectRequest, Map<String, Integer>> var = req.stream()
+                .collect(Collectors.toMap(
+                        pReq-> pReq,
+                        pReq -> pReq.getRequiredItemsSQLId()
+                                .stream()
+                                .collect(Collectors.toMap(
+                                        item -> String.valueOf(item.getSqlId()),
+                                        ProjectItem::getQuantityNeeded
+                                    ))));
+
+        List<Project> projects = var.entrySet()
+                .stream()
+                .map(entry -> Project.newBuilder()
+                        .setId(entry.getKey().get_id().toString())
+                        .setName(entry.getKey().getProjectName())
+                        .putAllRequirements(entry.getValue())
+                        .setPriority(1)
+                        .build())
+                .toList();
+
+        System.out.println("Calculated Required Items.");
+
+        List<Resource> resources = availableItems.stream().map(inventoryItem -> Resource.newBuilder()
+                        .setId(String.valueOf(inventoryItem.getId()))
+                        .setName(inventoryItem.getName())
+                        .setCapacity(inventoryItem.getAvailableQuantity())
+                        .setCost(10.0)
+                        .build())
+                .collect(Collectors.toList());
+
+        System.out.println("Mapping to Resources List.");
+
+        return AllocationRequest.newBuilder()
+                .addAllProjects(projects)
+                .addAllResources(resources)
+                .setStrategy(AllocationStrategy.newBuilder()
+                        .setStrategyName("default")
+                        .build())
+                .build();
+    }
+
+
+    public SimulateRequestResponse processAllocationResponse(List<ProjectRequest> requests, AllocationResponse response) {
+        // Process each project request
+        for (ProjectRequest req : requests) {
+            // Set allocation ID for all requests
+            req.setAllocationId(response.getAllocationId());
+
+            // Find corresponding project allocation
+            ProjectAllocatedResources allocatedResources = response.getProjectAllocationsMap().entrySet()
+                    .stream()
+                    .filter(entry -> entry.getValue().getProjectId().equals(req._id.toString()))
+                    .map(entry -> {
+                        ProjectAllocatedResources par = new ProjectAllocatedResources();
+
+                        // Set completion percentage
+                        par.setCompletionPercentage(Double.parseDouble(entry.getKey()));
+
+                        // Convert resource allocations to map
+                        Map<String, Integer> allocationMap = entry.getValue().getResourceAllocationsList()
+                                .stream()
+                                .collect(Collectors.toMap(
+                                        ResourceAllocation::getResourceId,
+                                        ResourceAllocation::getAllocatedAmount
+                                ));
+                        par.setAllocationMap(allocationMap);
+
+                        return par;
+                    })
+                    .findFirst()
+                    .orElse(null);
+
+            req.setAllocatedResources(allocatedResources);
+        }
+
+        return new SimulateRequestResponse(requests, this.convertProtoStats(response.getGlobalStats()));
+    }
+
+
+    private SimulateAllocationStats convertProtoStats(AllocationStats protoStats) {
+        SimulateAllocationStats metadata = new SimulateAllocationStats();
+        metadata.setTotalResourcesAvailable(protoStats.getTotalResourcesAvailable());
+        metadata.setTotalResourcesUsed(protoStats.getTotalResourcesUsed());
+        metadata.setAverageResourcesPerProject(protoStats.getAverageResourcesPerProject());
+        metadata.setUnusedResources(protoStats.getUnusedResources());
+
+        if (protoStats.hasMostAssignedResource()) {
+            SimulateResourceUsage mostAssigned = new SimulateResourceUsage();
+            mostAssigned.setResourceId(protoStats.getMostAssignedResource().getResourceId());
+            mostAssigned.setUsageCount(protoStats.getMostAssignedResource().getUsageCount());
+            metadata.setMostAssignedResource(mostAssigned);
+        }
+
+        if (protoStats.hasLeastAssignedResource()) {
+            SimulateResourceUsage leastAssigned = new SimulateResourceUsage();
+            leastAssigned.setResourceId(protoStats.getLeastAssignedResource().getResourceId());
+            leastAssigned.setUsageCount(protoStats.getLeastAssignedResource().getUsageCount());
+            metadata.setLeastAssignedResource(leastAssigned);
+        }
+
+        return metadata;
     }
 }

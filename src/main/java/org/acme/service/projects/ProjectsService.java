@@ -14,6 +14,6 @@ public class ProjectsService {
     ProjectRequestService projectRequestService;
 
     public List<ProjectRequest> list() {
-        return projectRequestService.getListByStatus(ProjectStatus.ALLOCATED);
+        return projectRequestService.getListByProjectStatus(ProjectStatus.ALLOCATED);
     }
 }

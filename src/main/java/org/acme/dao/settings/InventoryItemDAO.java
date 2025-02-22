@@ -11,4 +11,8 @@ public class InventoryItemDAO implements PanacheRepository<InventoryItem> {
     public List<InventoryItem> findAllAvailable() {
         return find("availableQuantity > ?1", 0).list();
     }
+    public List<InventoryItem> findIdList(List<Long> ids) {
+        return find("id in ?1", ids).list();
+    }
+
 }

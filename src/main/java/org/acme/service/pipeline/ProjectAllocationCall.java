@@ -10,7 +10,6 @@ import jakarta.inject.Singleton;
 import lombok.AllArgsConstructor;
 import org.acme.pattern.Handler;
 import org.acme.pattern.context.BaseTransactionContext;
-import org.acme.service.ext.ResourceAllocationServiceChannel;
 import resourceallocation.*;
 
 import java.time.Duration;

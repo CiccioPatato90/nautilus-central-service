@@ -94,12 +94,23 @@ public class RequestController {
         switch(command.getRequestType()){
             case ASSOCIATION_REQUEST -> {
                 res.setAssociationRequestDTO(associationRequestService.findByObjectId(command.getRequestId()));
+                var common = new RequestCommonData();
+                common.setInventoryRequestList(inventoryRequestService.getPendingInventoryRequests(command.getRequestId()));
+                common.setProjectRequestList(projectRequestService.getPendingProjectRequests(command.getRequestId()));
+                res.setCommonData(common);
             }
             case INVENTORY_REQUEST -> {
                 res.setInventoryRequestDTO(inventoryRequestService.findByObjectId(command.getRequestId()));
+                res.setAssociationRequestDTO(associationRequestService.findByObjectId(res.getInventoryRequestDTO().getAssociationReqId()));
+//                get request item metadata
+                var common = new RequestCommonData();
+//                common.setItemsList(inventoryItemsService.getItemsMetadata(res.getInventoryRequestDTO().getInventoryChanges()));
+                common.setItemMetadataMap(inventoryRequestService.getItemsMetadata(res.getInventoryRequestDTO().getInventoryChanges()));
+                res.setCommonData(common);
             }
             case PROJECT_REQUEST -> {
                 res.setProjectRequestDTO(projectRequestService.findByObjectId(command.getRequestId()));
+                res.setAssociationRequestDTO(associationRequestService.findByObjectId(res.getProjectRequestDTO().getAssociationReqId()));
             }
         };
 
@@ -129,4 +140,5 @@ public class RequestController {
 
         return res;
     }
+
 }

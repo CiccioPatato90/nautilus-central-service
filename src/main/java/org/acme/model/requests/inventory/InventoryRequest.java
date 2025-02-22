@@ -23,6 +23,5 @@ public class InventoryRequest {
     public String updatedAt;
     public String createdAt;
     public List<InventoryChange> inventoryChanges;
-    public Map<Long, Integer> inventoryState; //tracks requested (MySQL ItemID {KEY}, Requested Quantity {VALUE})
     public String approvedBy;
 }
