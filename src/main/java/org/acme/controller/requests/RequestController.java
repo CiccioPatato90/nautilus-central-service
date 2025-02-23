@@ -4,6 +4,8 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import org.acme.dto.InventoryChangeDTO;
+import org.acme.dto.ProjectItemDTO;
 import org.acme.model.requests.common.RequestFilter;
 import org.acme.model.requests.common.RequestCommand;
 import org.acme.model.response.requests.*;
@@ -12,6 +14,8 @@ import org.acme.service.requests.InventoryRequestService;
 import org.acme.service.requests.ProjectRequestService;
 import org.acme.service.requests.CommonRequestService;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+
+import java.util.stream.Collectors;
 
 @Path("/api/requests")
 public class RequestController {
@@ -105,12 +109,21 @@ public class RequestController {
 //                get request item metadata
                 var common = new RequestCommonData();
 //                common.setItemsList(inventoryItemsService.getItemsMetadata(res.getInventoryRequestDTO().getInventoryChanges()));
-                common.setItemMetadataMap(inventoryRequestService.getItemsMetadata(res.getInventoryRequestDTO().getInventoryChanges()));
+                common.setItemMetadataMap(inventoryRequestService.getItemsMetadata(
+                        res.getInventoryRequestDTO().getInventoryChanges().stream()
+                                .map(InventoryChangeDTO::getItemId).map(Long::valueOf).collect(Collectors.toList())
+                ));
                 res.setCommonData(common);
             }
             case PROJECT_REQUEST -> {
                 res.setProjectRequestDTO(projectRequestService.findByObjectId(command.getRequestId()));
                 res.setAssociationRequestDTO(associationRequestService.findByObjectId(res.getProjectRequestDTO().getAssociationReqId()));
+                var common = new RequestCommonData();
+                common.setItemMetadataMap(inventoryRequestService.getItemsMetadata(
+                        res.getProjectRequestDTO().getRequiredItemsSQLId().stream()
+                                .map(ProjectItemDTO::getSqlId).map(Long::valueOf).collect(Collectors.toList())
+                ));
+                res.setCommonData(common);
             }
         };
 
@@ -128,13 +141,13 @@ public class RequestController {
 
         switch(command.getRequestType()){
             case ASSOCIATION_REQUEST -> {
-                associationRequestService.approveRequest(command);
+                res.setRequestId(associationRequestService.approveRequest(command));
             }
             case INVENTORY_REQUEST -> {
-                inventoryRequestService.approveRequest(command);
+                res.setRequestId(inventoryRequestService.approveRequest(command));
             }
             case PROJECT_REQUEST -> {
-                projectRequestService.approveRequest(command);
+                res.setRequestId(projectRequestService.approveRequest(command));
             }
         };
 

@@ -17,13 +17,15 @@ public class InventoryRequestController {
     @Inject
     InventoryRequestService inventoryRequestService;
 
+
     @POST
     @Path("sim")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed("user")
     public SimulateRequestResponse approveRequest(@RequestBody SimulateCommand command) {
-        var res = inventoryRequestService.simulateRequest(command);
+//        var res = inventoryRequestService.simulateRequestLinearProgramming(command);
+        var res = inventoryRequestService.simulateRequestGreedy(command);
         return res;
     }
 }

@@ -2,10 +2,12 @@ package org.acme.service.requests;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import org.acme.dto.InventoryChangeDTO;
 import org.acme.dto.InventoryItemDTO;
 import org.acme.dto.InventoryRequestDTO;
+import org.acme.dto.ProjectRequestDTO;
+import org.acme.model.enums.GreedyOrder;
+import org.acme.model.enums.GreedyStrategy;
 import org.acme.model.enums.projects.ProjectStatus;
 import org.acme.model.enums.requests.RequestStatus;
 import org.acme.model.requests.common.RequestCommand;
@@ -31,7 +33,6 @@ import org.acme.model.virtual_warehouse.item.InventoryItem;
 import org.acme.service.ext.ResourceAllocationService;
 import org.bson.Document;
 import org.bson.conversions.Bson;
-import org.jboss.logging.Logger;
 import resourceallocation.*;
 
 import java.time.Instant;
@@ -248,16 +249,14 @@ public class InventoryRequestService{
                 .toList();
     }
 
-    public Map<Integer,InventoryItemDTO> getItemsMetadata(List<InventoryChangeDTO> inventoryChanges) {
-        var itemIds = inventoryChanges.stream()
-                .map(InventoryChangeDTO::getItemId).map(Long::valueOf).collect(Collectors.toList());
-
+    public Map<Integer,InventoryItemDTO> getItemsMetadata(List<Long> itemIds) {
         return inventoryItemDAO.findIdList(itemIds).stream()
                 .map(InventoryItemDTO::fromEntity)
                 .collect(Collectors.toMap(InventoryItemDTO::getId, inventoryItemDTO -> inventoryItemDTO));
     }
 
-    public SimulateRequestResponse simulateRequest(SimulateCommand command) {
+
+    public SimulateRequestResponse simulateRequestLinearProgramming(SimulateCommand command) {
         List<ProjectRequest> projectRequests = List.of();
         switch(command.getSimulationType()){
             case PENDING_PROJECTS -> {
@@ -288,18 +287,57 @@ public class InventoryRequestService{
                 })
                 .toList();
 
-        var req = createAllocationRequestMPMI(projectRequests, augmentedItems);
+        var req = createAllocationRequestMPMI(projectRequests, augmentedItems, GreedyOrder.UNKNOWN, GreedyStrategy.UNKNOWN);
 
-        var response = resourceAllocationService.allocateResources(req);
+        var response = resourceAllocationService.allocateResourcesLinearProgramming(req);
 
         System.out.println(response);
 
-        var result = processAllocationResponse(projectRequests, response);
-        return result;
+        return processAllocationResponse(projectRequests, response);
+    }
+
+    public SimulateRequestResponse simulateRequestGreedy(SimulateCommand command) {
+        List<ProjectRequest> projectRequests = List.of();
+        switch(command.getSimulationType()){
+            case PENDING_PROJECTS -> {
+                projectRequests = projectRequestService.getListByRequestStatus(RequestStatus.PENDING);
+            }
+            case ALLOCATED_PROJECTS -> {
+                projectRequests = projectRequestService.getListByProjectStatus(ProjectStatus.ALLOCATED);
+            }
+        }
+
+        var availableItems = inventoryItemDAO.findAllAvailable();
+        System.out.println("Found " + availableItems.size() + " available items");
+
+        // First, convert changes to a Map for efficient lookup
+        Map<Integer, Integer> changesByItemId = command.getChanges().stream()
+                .collect(Collectors.toMap(
+                        InventoryChangeDTO::getItemId,
+                        InventoryChangeDTO::getRequestedQuantity,
+                        Integer::sum  // In case there are multiple changes for the same ID
+                ));
+
+        // Create new list with augmented quantities
+        var augmentedItems = availableItems.stream()
+//                PEEK APPLIES A FUNCTION TO THE ELEMENT OF THE STREAMS, IN PLACE
+                .peek(item -> {
+                    int additionalQuantity = changesByItemId.getOrDefault(item.getId(), 0);
+                    item.setAvailableQuantity(item.getAvailableQuantity() + additionalQuantity);
+                })
+                .toList();
+
+        var req = createAllocationRequestMPMI(projectRequests, augmentedItems, command.getGreedyOrder(), command.getGreedyStrategy());
+
+        var response = resourceAllocationService.allocateResourcesGreedy(req);
+
+        System.out.println(response);
+
+        return processAllocationResponse(projectRequests, response);
     }
 
 //    MPMI STANDS FOR MULTI PROJECT MULTI ITEM
-    private AllocationRequest createAllocationRequestMPMI(List<ProjectRequest> req, List<InventoryItem> availableItems) {
+    private AllocationRequest createAllocationRequestMPMI(List<ProjectRequest> req, List<InventoryItem> availableItems, GreedyOrder order, GreedyStrategy strategy) {
 
         //<projectRequestId, map of required items>
         Map<ProjectRequest, Map<String, Integer>> var = req.stream()
@@ -338,17 +376,25 @@ public class InventoryRequestService{
                 .addAllProjects(projects)
                 .addAllResources(resources)
                 .setStrategy(AllocationStrategy.newBuilder()
-                        .setStrategyName("default")
+                        .setCriteria(GreedyStrategy.toProto(strategy))
+                        .setOrder(GreedyOrder.toProto(order))
                         .build())
                 .build();
     }
 
 
     public SimulateRequestResponse processAllocationResponse(List<ProjectRequest> requests, AllocationResponse response) {
+        var origCompletionPercentages = new HashMap<String, Double>();
         // Process each project request
         for (ProjectRequest req : requests) {
             // Set allocation ID for all requests
             req.setAllocationId(response.getAllocationId());
+
+            if(req.getAllocatedResources() != null){
+                origCompletionPercentages.put(req.get_id().toString(), (double) Math.round(req.getAllocatedResources().getCompletionPercentage()));
+            }else{
+                origCompletionPercentages.put(req.get_id().toString(), 0.0);
+            }
 
             // Find corresponding project allocation
             ProjectAllocatedResources allocatedResources = response.getProjectAllocationsMap().entrySet()
@@ -377,7 +423,7 @@ public class InventoryRequestService{
             req.setAllocatedResources(allocatedResources);
         }
 
-        return new SimulateRequestResponse(requests, this.convertProtoStats(response.getGlobalStats()));
+        return new SimulateRequestResponse(requests.stream().map(ProjectRequestDTO::fromEntity).toList(), this.convertProtoStats(response.getGlobalStats()), origCompletionPercentages);
     }
 
 

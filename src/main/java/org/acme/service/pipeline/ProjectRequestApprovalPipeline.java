@@ -75,7 +75,8 @@ public class ProjectRequestApprovalPipeline {
                             .build())
                     .addAllResources(resources)
                     .setStrategy(AllocationStrategy.newBuilder()
-                            .setStrategyName("default")
+                            .setCriteria(GreedyCriteria.ASSOCIATION_ACTIVITY)
+                            .setOrder(GreedyCriteriaOrder.LARGEST_FIRST)
                             .build())
                     .build();
         }

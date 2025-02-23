@@ -110,7 +110,7 @@ public class ProjectRequestService{
             var stub = MutinyResourceAllocationServiceGrpc.newMutinyStub(channel);
 
             //find a way to deinit channel!!!!!
-            AllocationResponse response = stub.allocateResources(allocationRequest)
+            AllocationResponse response = stub.allocateResourcesLinearProgramming(allocationRequest)
                     .onItem().invoke(resp ->
                             System.out.println("Received status: " + resp.getStatus().name() + " and ID: " + resp.getAllocationId()))
                     .await().indefinitely();
@@ -183,7 +183,7 @@ public class ProjectRequestService{
                         .build())
                 .addAllResources(resources)
                 .setStrategy(AllocationStrategy.newBuilder()
-                        .setStrategyName("default")
+                        .setCriteria(GreedyCriteria.PROJECT_SIZE)
                         .build())
                 .build();
     }

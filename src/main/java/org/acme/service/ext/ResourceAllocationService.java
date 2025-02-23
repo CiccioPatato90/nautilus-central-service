@@ -12,7 +12,6 @@ import resourceallocation.AllocationRequest;
 import resourceallocation.AllocationResponse;
 import resourceallocation.MutinyResourceAllocationServiceGrpc;
 
-import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
@@ -29,15 +28,38 @@ public class ResourceAllocationService {
         this.port = port;
     }
 
-    public AllocationResponse allocateResources(AllocationRequest request) throws ResourceAllocationException {
+    public AllocationResponse allocateResourcesLinearProgramming(AllocationRequest request) throws ResourceAllocationException {
         ManagedChannel channel = null;
         try {
             channel = createChannel();
             var stub = MutinyResourceAllocationServiceGrpc.newMutinyStub(channel);
 
-            return stub.allocateResources(request)
+            return stub.allocateResourcesLinearProgramming(request)
                     .onItem().invoke(response ->
                             logger.info("Received allocation response - Status: {}, ID: {}",
+                                    response.getStatus().name(),
+                                    response.getAllocationId()))
+                    .onFailure().invoke(throwable ->
+                            logger.error("Failed to allocate resources", throwable))
+                    .await().indefinitely();
+
+        } catch (Exception e) {
+            logger.error("Error during resource allocation", e);
+            throw new ResourceAllocationException("Failed to allocate resources", e);
+        } finally {
+            shutdownChannel(channel);
+        }
+    }
+
+    public AllocationResponse allocateResourcesGreedy(AllocationRequest request) throws ResourceAllocationException {
+        ManagedChannel channel = null;
+        try {
+            channel = createChannel();
+            var stub = MutinyResourceAllocationServiceGrpc.newMutinyStub(channel);
+
+            return stub.allocateResourcesGreedy(request)
+                    .onItem().invoke(response ->
+                            logger.info("Received GREEDY allocation response - Status: {}, ID: {}",
                                     response.getStatus().name(),
                                     response.getAllocationId()))
                     .onFailure().invoke(throwable ->

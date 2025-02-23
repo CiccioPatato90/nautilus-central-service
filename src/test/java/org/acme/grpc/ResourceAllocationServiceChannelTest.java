@@ -34,7 +34,7 @@ public class ResourceAllocationServiceChannelTest {
     }
 
     @Test
-    public void testAllocateResources() {
+    public void testAllocateResourcesLinearProgramming() {
 
         AllocationResponse response = MutinyResourceAllocationServiceGrpc.newMutinyStub(channel)
                 .allocateResources(AllocationRequest.newBuilder()
