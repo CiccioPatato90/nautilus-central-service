@@ -23,7 +23,7 @@ public class InventoryItem {
     @JoinColumn(name = "item_category", nullable = false)
     private InventoryItemCategory itemCategory;
 
-    @Column(name = "available_quantity")
-    private int availableQuantity = 0;
+//    @Column(name = "available_quantity")
+//    private int availableQuantity = 0;
 
 }

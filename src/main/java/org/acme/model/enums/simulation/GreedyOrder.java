@@ -1,4 +1,4 @@
-package org.acme.model.enums;
+package org.acme.model.enums.simulation;
 
 import resourceallocation.GreedyCriteriaOrder;
 

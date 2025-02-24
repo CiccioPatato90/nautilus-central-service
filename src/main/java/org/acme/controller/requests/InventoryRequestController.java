@@ -24,8 +24,14 @@ public class InventoryRequestController {
     @Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed("user")
     public SimulateRequestResponse approveRequest(@RequestBody SimulateCommand command) {
-//        var res = inventoryRequestService.simulateRequestLinearProgramming(command);
-        var res = inventoryRequestService.simulateRequestGreedy(command);
-        return res;
+        switch (command.getSolver()) {
+            case LINEAR -> {
+                return inventoryRequestService.simulateRequestLinearProgramming(command);
+            }
+            case GREEDY -> {
+                return inventoryRequestService.simulateRequestGreedy(command);
+            }
+        }
+        return null;
     }
 }

@@ -1,15 +1,21 @@
 package org.acme.service.requests;
 
+import io.quarkus.grpc.runtime.stork.StorkMeasuringGrpcInterceptor;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.acme.dao.virtual_warehouse.InventoryItemAssociationDAO;
 import org.acme.dto.InventoryChangeDTO;
 import org.acme.dto.InventoryItemDTO;
 import org.acme.dto.InventoryRequestDTO;
+import org.acme.dto.InventoryItemAssociationDTO;
 import org.acme.dto.ProjectRequestDTO;
-import org.acme.model.enums.GreedyOrder;
-import org.acme.model.enums.GreedyStrategy;
+import org.acme.exceptions.EmptyProjectList;
+import org.acme.exceptions.SqlException;
+import org.acme.model.enums.simulation.GreedyOrder;
+import org.acme.model.enums.simulation.GreedyStrategy;
 import org.acme.model.enums.projects.ProjectStatus;
 import org.acme.model.enums.requests.RequestStatus;
+import org.acme.model.enums.simulation.InventorySimulationType;
 import org.acme.model.requests.common.RequestCommand;
 import org.acme.model.requests.common.RequestFilter;
 import org.acme.model.requests.inventory.InventoryChange;
@@ -21,16 +27,13 @@ import org.acme.model.response.requests.inventory.SimulateAllocationStats;
 import org.acme.model.response.requests.inventory.SimulateCommand;
 import org.acme.model.response.requests.inventory.SimulateRequestResponse;
 import org.acme.model.response.requests.inventory.SimulateResourceUsage;
-import org.acme.model.virtual_warehouse.box.InventoryBox;
-import org.acme.model.virtual_warehouse.box.InventoryBoxSize;
+import org.acme.model.virtual_warehouse.InventoryItemAssociation;
 import org.acme.dao.AssociationDAO;
 import org.acme.dao.requests.InventoryRequestDAO;
 import org.acme.dao.settings.InventoryItemDAO;
-import org.acme.dao.virtual_warehouse.InventoryBoxDAO;
-import org.acme.dao.virtual_warehouse.InventoryBoxSizeDAO;
-import org.acme.dao.virtual_warehouse.WarehouseDAO;
 import org.acme.model.virtual_warehouse.item.InventoryItem;
 import org.acme.service.ext.ResourceAllocationService;
+import org.acme.service.virtual_warehouse.VirtualWarehouseService;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import resourceallocation.*;
@@ -41,6 +44,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static io.netty.util.internal.StringUtil.isNullOrEmpty;
+import static org.acme.service.ext.ResourceAllocationService.createAllocationRequestMPMI;
+import static org.acme.service.ext.ResourceAllocationService.processAllocationResponse;
 
 @ApplicationScoped
 public class InventoryRequestService{
@@ -49,13 +54,9 @@ public class InventoryRequestService{
     @Inject
     AssociationDAO associationDAO;
     @Inject
-    WarehouseDAO warehouseDAO;
-    @Inject
     InventoryItemDAO inventoryItemDAO;
     @Inject
-    InventoryBoxDAO inventoryBoxDAO;
-    @Inject
-    InventoryBoxSizeDAO inventoryBoxSizeDAO;
+    InventoryItemAssociationDAO inventoryItemAssociationDAO;
     @Inject
     CommonRequestService commonRequestService;
     @Inject
@@ -64,6 +65,10 @@ public class InventoryRequestService{
     ResourceAllocationService resourceAllocationService;
     @Inject
     ProjectRequestService projectRequestService;
+    @Inject
+    StorkMeasuringGrpcInterceptor storkMeasuringGrpcInterceptor;
+    @Inject
+    VirtualWarehouseService virtualWarehouseService;
 
 
     public Map<String, List<InventoryRequestDTO>> getList(RequestFilter filter) {
@@ -123,7 +128,38 @@ public class InventoryRequestService{
 
     }
 
-    public String approveRequest(RequestCommand command) {
+    public String approveRequest(RequestCommand command){
+        var req = inventoryRequestDAO.findByObjectId(commonRequestService.getObjectId(command.getRequestId()));
+        var associationInventory = inventoryItemAssociationDAO.findByAssociationId(req.getAssociationSqlId());
+
+        for(InventoryChange itemRequest : req.getInventoryChanges()){
+//            if (associationInventory.stream().anyMatch(inventory -> Objects.equals(inventory.getFkInventoryItem().getId(), itemRequest.itemId))){
+            associationInventory.stream()
+                    .filter(inventory -> Objects.equals(inventory.getFkInventoryItem().getId(), itemRequest.itemId))
+                    .findFirst().ifPresentOrElse(item -> item.setAvailableQuantity(item.getAvailableQuantity() + itemRequest.requestedQuantity),
+                            () -> {
+                                var newItem = new InventoryItemAssociation();
+                                newItem.setFkAssociation(associationDAO.findById(req.getAssociationSqlId()));
+                                newItem.setFkInventoryItem(inventoryItemDAO.findById(Long.valueOf(itemRequest.itemId)));
+                                newItem.setAvailableQuantity(itemRequest.requestedQuantity);
+
+                                associationInventory.add(newItem);
+                            });
+        }
+
+        try{
+            inventoryItemAssociationDAO.persistList(associationInventory);
+            String now = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
+            req.setUpdatedAt(now);
+            req.setStatus(RequestStatus.APPROVED);
+            inventoryRequestDAO.persistOrUpdate(req);
+        } catch (SqlException e) {
+            throw new SqlException(e.getMessage());
+        }
+     return req.get_id().toString();
+    }
+
+    /*public String approveRequest(RequestCommand command) {
 //        HOW DO WE MANAGE INVENTORY ITEM REQUEST APPROVAL, we send it to virtual
 //          1. GET REQUEST FROM MONGO, SAVE IT IN CONTEXT
 //          <STRING><INVENTORY_REQUEST> -> GetInventoryRequest()
@@ -209,14 +245,14 @@ public class InventoryRequestService{
             throw new RuntimeException("MongoDB update failed. Rolled back MySQL.", e);
         }
         return "Everything OK";
-    }
+    }*/
 
-    private InventoryBoxSize getMinimumNeededSize(int requiredSize) {
+    /*private InventoryBoxSize getMinimumNeededSize(int requiredSize) {
         return inventoryBoxSizeDAO.listAll().stream()
                 .filter(box -> box.getMaxSize() >= requiredSize)
                 .min(Comparator.comparing(InventoryBoxSize::getMaxSize))
                 .orElse(null);
-    }
+    }*/
 
     public String persist(InventoryRequest request){
         this.inventoryRequestDAO.persistOrUpdate(request);
@@ -257,197 +293,62 @@ public class InventoryRequestService{
 
 
     public SimulateRequestResponse simulateRequestLinearProgramming(SimulateCommand command) {
-        List<ProjectRequest> projectRequests = List.of();
-        switch(command.getSimulationType()){
-            case PENDING_PROJECTS -> {
-                projectRequests = projectRequestService.getListByRequestStatus(RequestStatus.PENDING);
-            }
-            case ALLOCATED_PROJECTS -> {
-                projectRequests = projectRequestService.getListByProjectStatus(ProjectStatus.ALLOCATED);
-            }
-        }
+        List<ProjectRequest> projectRequests = getProjectList(command.getSimulationType());
 
-        var availableItems = inventoryItemDAO.findAllAvailable();
-        System.out.println("Found " + availableItems.size() + " available items");
+        var availabilitiesMap = virtualWarehouseService.getAvailabilityMap();
 
-        // First, convert changes to a Map for efficient lookup
-        Map<Integer, Integer> changesByItemId = command.getChanges().stream()
-                .collect(Collectors.toMap(
-                        InventoryChangeDTO::getItemId,
-                        InventoryChangeDTO::getRequestedQuantity,
-                        Integer::sum  // In case there are multiple changes for the same ID
-                ));
+        var augmented = getAugmentedAvailabilitiesMap(availabilitiesMap, command.getChanges());
 
-        // Create new list with augmented quantities
-        var augmentedItems = availableItems.stream()
-//                PEEK APPLIES A FUNCTION TO THE ELEMENT OF THE STREAMS, IN PLACE
-                .peek(item -> {
-                    int additionalQuantity = changesByItemId.getOrDefault(item.getId(), 0);
-                    item.setAvailableQuantity(item.getAvailableQuantity() + additionalQuantity);
-                })
-                .toList();
-
-        var req = createAllocationRequestMPMI(projectRequests, augmentedItems, GreedyOrder.UNKNOWN, GreedyStrategy.UNKNOWN);
+        var req = createAllocationRequestMPMI(projectRequests, GreedyOrder.LARGEST_FIRST, GreedyStrategy.PROJECT_SIZE, augmented);
 
         var response = resourceAllocationService.allocateResourcesLinearProgramming(req);
-
-        System.out.println(response);
 
         return processAllocationResponse(projectRequests, response);
     }
 
     public SimulateRequestResponse simulateRequestGreedy(SimulateCommand command) {
-        List<ProjectRequest> projectRequests = List.of();
-        switch(command.getSimulationType()){
+        List<ProjectRequest> projectRequests = getProjectList(command.getSimulationType());
+
+        var availabilitiesMap = virtualWarehouseService.getAvailabilityMap();
+
+        var augmented = getAugmentedAvailabilitiesMap(availabilitiesMap, command.getChanges());
+
+        var req = createAllocationRequestMPMI(projectRequests, command.getGreedyOrder(), command.getGreedyStrategy(), augmented);
+
+        var response = resourceAllocationService.allocateResourcesGreedy(req);
+
+        return processAllocationResponse(projectRequests, response);
+    }
+
+    private List<ProjectRequest> getProjectList(InventorySimulationType simulationType) {
+        switch(simulationType){
             case PENDING_PROJECTS -> {
-                projectRequests = projectRequestService.getListByRequestStatus(RequestStatus.PENDING);
+                return projectRequestService.getListByStatus(RequestStatus.PENDING, null);
             }
             case ALLOCATED_PROJECTS -> {
-                projectRequests = projectRequestService.getListByProjectStatus(ProjectStatus.ALLOCATED);
+                return projectRequestService.getListByStatus(null, ProjectStatus.ALLOCATED);
+            }
+            default -> {
+                throw new EmptyProjectList("Simulation type not supported, no projects to simulate");
             }
         }
+    }
 
-        var availableItems = inventoryItemDAO.findAllAvailable();
-        System.out.println("Found " + availableItems.size() + " available items");
-
+    private Map<Integer, Integer> getAugmentedAvailabilitiesMap(Map<Integer, Integer> availabilitiesMap, List<InventoryChangeDTO> changes){
         // First, convert changes to a Map for efficient lookup
-        Map<Integer, Integer> changesByItemId = command.getChanges().stream()
+        Map<Integer, Integer> changesByItemId = changes.stream()
                 .collect(Collectors.toMap(
                         InventoryChangeDTO::getItemId,
                         InventoryChangeDTO::getRequestedQuantity,
                         Integer::sum  // In case there are multiple changes for the same ID
                 ));
 
-        // Create new list with augmented quantities
-        var augmentedItems = availableItems.stream()
-//                PEEK APPLIES A FUNCTION TO THE ELEMENT OF THE STREAMS, IN PLACE
-                .peek(item -> {
-                    int additionalQuantity = changesByItemId.getOrDefault(item.getId(), 0);
-                    item.setAvailableQuantity(item.getAvailableQuantity() + additionalQuantity);
-                })
-                .toList();
+        Map<Integer, Integer> mergedMap = new HashMap<>(availabilitiesMap);
+        changesByItemId.forEach((id, qty) -> mergedMap.merge(id, qty, Integer::sum));
 
-        var req = createAllocationRequestMPMI(projectRequests, augmentedItems, command.getGreedyOrder(), command.getGreedyStrategy());
-
-        var response = resourceAllocationService.allocateResourcesGreedy(req);
-
-        System.out.println(response);
-
-        return processAllocationResponse(projectRequests, response);
-    }
-
-//    MPMI STANDS FOR MULTI PROJECT MULTI ITEM
-    private AllocationRequest createAllocationRequestMPMI(List<ProjectRequest> req, List<InventoryItem> availableItems, GreedyOrder order, GreedyStrategy strategy) {
-
-        //<projectRequestId, map of required items>
-        Map<ProjectRequest, Map<String, Integer>> var = req.stream()
-                .collect(Collectors.toMap(
-                        pReq-> pReq,
-                        pReq -> pReq.getRequiredItemsSQLId()
-                                .stream()
-                                .collect(Collectors.toMap(
-                                        item -> String.valueOf(item.getSqlId()),
-                                        ProjectItem::getQuantityNeeded
-                                    ))));
-
-        List<Project> projects = var.entrySet()
-                .stream()
-                .map(entry -> Project.newBuilder()
-                        .setId(entry.getKey().get_id().toString())
-                        .setName(entry.getKey().getProjectName())
-                        .putAllRequirements(entry.getValue())
-                        .setPriority(1)
-                        .build())
-                .toList();
-
-        System.out.println("Calculated Required Items.");
-
-        List<Resource> resources = availableItems.stream().map(inventoryItem -> Resource.newBuilder()
-                        .setId(String.valueOf(inventoryItem.getId()))
-                        .setName(inventoryItem.getName())
-                        .setCapacity(inventoryItem.getAvailableQuantity())
-                        .setCost(10.0)
-                        .build())
-                .collect(Collectors.toList());
-
-        System.out.println("Mapping to Resources List.");
-
-        return AllocationRequest.newBuilder()
-                .addAllProjects(projects)
-                .addAllResources(resources)
-                .setStrategy(AllocationStrategy.newBuilder()
-                        .setCriteria(GreedyStrategy.toProto(strategy))
-                        .setOrder(GreedyOrder.toProto(order))
-                        .build())
-                .build();
+        return mergedMap;
     }
 
 
-    public SimulateRequestResponse processAllocationResponse(List<ProjectRequest> requests, AllocationResponse response) {
-        var origCompletionPercentages = new HashMap<String, Double>();
-        // Process each project request
-        for (ProjectRequest req : requests) {
-            // Set allocation ID for all requests
-            req.setAllocationId(response.getAllocationId());
 
-            if(req.getAllocatedResources() != null){
-                origCompletionPercentages.put(req.get_id().toString(), (double) Math.round(req.getAllocatedResources().getCompletionPercentage()));
-            }else{
-                origCompletionPercentages.put(req.get_id().toString(), 0.0);
-            }
-
-            // Find corresponding project allocation
-            ProjectAllocatedResources allocatedResources = response.getProjectAllocationsMap().entrySet()
-                    .stream()
-                    .filter(entry -> entry.getValue().getProjectId().equals(req._id.toString()))
-                    .map(entry -> {
-                        ProjectAllocatedResources par = new ProjectAllocatedResources();
-
-                        // Set completion percentage
-                        par.setCompletionPercentage(Double.parseDouble(entry.getKey()));
-
-                        // Convert resource allocations to map
-                        Map<String, Integer> allocationMap = entry.getValue().getResourceAllocationsList()
-                                .stream()
-                                .collect(Collectors.toMap(
-                                        ResourceAllocation::getResourceId,
-                                        ResourceAllocation::getAllocatedAmount
-                                ));
-                        par.setAllocationMap(allocationMap);
-
-                        return par;
-                    })
-                    .findFirst()
-                    .orElse(null);
-
-            req.setAllocatedResources(allocatedResources);
-        }
-
-        return new SimulateRequestResponse(requests.stream().map(ProjectRequestDTO::fromEntity).toList(), this.convertProtoStats(response.getGlobalStats()), origCompletionPercentages);
-    }
-
-
-    private SimulateAllocationStats convertProtoStats(AllocationStats protoStats) {
-        SimulateAllocationStats metadata = new SimulateAllocationStats();
-        metadata.setTotalResourcesAvailable(protoStats.getTotalResourcesAvailable());
-        metadata.setTotalResourcesUsed(protoStats.getTotalResourcesUsed());
-        metadata.setAverageResourcesPerProject(protoStats.getAverageResourcesPerProject());
-        metadata.setUnusedResources(protoStats.getUnusedResources());
-
-        if (protoStats.hasMostAssignedResource()) {
-            SimulateResourceUsage mostAssigned = new SimulateResourceUsage();
-            mostAssigned.setResourceId(protoStats.getMostAssignedResource().getResourceId());
-            mostAssigned.setUsageCount(protoStats.getMostAssignedResource().getUsageCount());
-            metadata.setMostAssignedResource(mostAssigned);
-        }
-
-        if (protoStats.hasLeastAssignedResource()) {
-            SimulateResourceUsage leastAssigned = new SimulateResourceUsage();
-            leastAssigned.setResourceId(protoStats.getLeastAssignedResource().getResourceId());
-            leastAssigned.setUsageCount(protoStats.getLeastAssignedResource().getUsageCount());
-            metadata.setLeastAssignedResource(leastAssigned);
-        }
-
-        return metadata;
-    }
 }

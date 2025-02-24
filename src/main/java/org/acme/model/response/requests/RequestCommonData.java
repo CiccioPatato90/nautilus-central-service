@@ -15,6 +15,7 @@ import java.util.Map;
 public class RequestCommonData {
     List<AssociationDTO> associationsList;
     Map<Integer, InventoryItemDTO> itemMetadataMap;
+    Map<Integer, Integer> itemAvailabilitiesMap;
     List<InventoryItemDTO> itemsList;
     List<InventoryRequestDTO> inventoryRequestList;
     List<ProjectRequestDTO> projectRequestList;

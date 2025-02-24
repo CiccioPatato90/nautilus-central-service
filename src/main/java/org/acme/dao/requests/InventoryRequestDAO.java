@@ -11,15 +11,6 @@ import java.util.List;
 
 @ApplicationScoped
 public class InventoryRequestDAO implements PanacheMongoRepository<InventoryRequest> {
-    public Object addRequest(InventoryRequest inventoryRequest) {
-        return null;
-    }
-    public List<InventoryRequest> getReq(RequestFilter filters) {
-        return null;
-    }
-    public InventoryRequest findByRequestId(String requestId) {
-        return find("requestId", requestId).firstResult();
-    }
     public InventoryRequest findByObjectId(ObjectId objId) {
         return find("_id", objId).firstResult();
     }

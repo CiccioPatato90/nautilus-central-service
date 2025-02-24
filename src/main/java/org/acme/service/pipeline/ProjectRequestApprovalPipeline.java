@@ -59,7 +59,7 @@ public class ProjectRequestApprovalPipeline {
             List<Resource> resources = input.stream().map(inventoryItem -> Resource.newBuilder()
                             .setId(String.valueOf(inventoryItem.getId()))
                             .setName(inventoryItem.getName())
-                            .setCapacity(inventoryItem.getAvailableQuantity())
+                            .setCapacity(0)
                             .setCost(10.0)
                             .build())
                     .collect(Collectors.toList());

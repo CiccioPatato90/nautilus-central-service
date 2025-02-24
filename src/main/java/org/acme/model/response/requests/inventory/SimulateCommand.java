@@ -3,9 +3,10 @@ package org.acme.model.response.requests.inventory;
 import lombok.Getter;
 import lombok.Setter;
 import org.acme.dto.InventoryChangeDTO;
-import org.acme.model.enums.GreedyOrder;
-import org.acme.model.enums.GreedyStrategy;
-import org.acme.model.enums.InventorySimulationType;
+import org.acme.model.enums.simulation.GreedyOrder;
+import org.acme.model.enums.simulation.GreedyStrategy;
+import org.acme.model.enums.simulation.InventorySimulationType;
+import org.acme.model.enums.simulation.SimulationSolver;
 
 import java.util.List;
 
@@ -17,4 +18,5 @@ public class SimulateCommand {
     InventorySimulationType simulationType;
     GreedyOrder greedyOrder;
     GreedyStrategy greedyStrategy;
+    SimulationSolver solver;
 }

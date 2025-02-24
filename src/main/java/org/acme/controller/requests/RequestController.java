@@ -13,6 +13,7 @@ import org.acme.service.requests.AssociationRequestService;
 import org.acme.service.requests.InventoryRequestService;
 import org.acme.service.requests.ProjectRequestService;
 import org.acme.service.requests.CommonRequestService;
+import org.acme.service.virtual_warehouse.VirtualWarehouseService;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 
 import java.util.stream.Collectors;
@@ -27,6 +28,8 @@ public class RequestController {
     InventoryRequestService inventoryRequestService;
     @Inject
     ProjectRequestService projectRequestService;
+    @Inject
+    VirtualWarehouseService virtualWarehouseService;
 
     @GET
     @Path("common")
@@ -108,11 +111,15 @@ public class RequestController {
                 res.setAssociationRequestDTO(associationRequestService.findByObjectId(res.getInventoryRequestDTO().getAssociationReqId()));
 //                get request item metadata
                 var common = new RequestCommonData();
-//                common.setItemsList(inventoryItemsService.getItemsMetadata(res.getInventoryRequestDTO().getInventoryChanges()));
                 common.setItemMetadataMap(inventoryRequestService.getItemsMetadata(
                         res.getInventoryRequestDTO().getInventoryChanges().stream()
                                 .map(InventoryChangeDTO::getItemId).map(Long::valueOf).collect(Collectors.toList())
                 ));
+                common.setItemAvailabilitiesMap(virtualWarehouseService.getAvailabilityMapFiltered(
+                        res.getInventoryRequestDTO().getInventoryChanges().stream()
+                                .map(InventoryChangeDTO::getItemId).map(Long::valueOf).collect(Collectors.toList())
+                ));
+
                 res.setCommonData(common);
             }
             case PROJECT_REQUEST -> {
